@@ -1354,7 +1354,7 @@
     display: flex; align-items: center; justify-content: center;
     font-size: 16px; transition: background 0.15s, color 0.15s, transform 0.15s;
   }
-  .tool-card:hover .tc-go { background: var(--ink); color: #fff; transform: translateX(2px); }
+  .tool-card:hover .tc-go { background: var(--btn-primary-bg); color: var(--btn-primary-fg); transform: translateX(2px); }
   .tool-card .tc-badge {
     position: absolute; top: 16px; right: 52px;
     font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
@@ -1413,7 +1413,7 @@
     color: var(--ink-soft); padding: 7px 14px; border-radius: 9px; cursor: pointer;
     -webkit-tap-highlight-color: transparent; transition: background 0.15s, color 0.15s;
   }
-  .seg button.active { background: var(--ink); color: #fff; }
+  .seg button.active { background: var(--btn-primary-bg); color: var(--btn-primary-fg); }
 
   /* --- Barra de progreso --- */
   .bar-wrap { margin: 4px 0 2px; }
@@ -1478,6 +1478,20 @@
       linear-gradient(-45deg, #34343d 25%, transparent 25%),
       linear-gradient(45deg, transparent 75%, #34343d 75%),
       linear-gradient(-45deg, transparent 75%, #34343d 75%); }
+  /* Modo oscuro: más contraste y profundidad en las nuevas herramientas */
+  body.dark .tool-card { background: var(--surface); border-color: var(--line); }
+  body.dark .tool-card:hover { border-color: var(--line-strong); }
+  body.dark .tool-card .tc-go { background: var(--surface-2); color: var(--ink-soft); }
+  body.dark .tool-head .tool-ico { background: var(--surface-2); }
+  body.dark .drop-zone { background: var(--surface-2); border-color: var(--line-strong); }
+  body.dark .drop-zone:hover, body.dark .drop-zone.dragover { background: #26262e; border-color: var(--ink-soft); }
+  body.dark .seg { background: var(--surface-2); border-color: var(--line); }
+  body.dark .seg button { color: var(--ink-soft); }
+  body.dark .seg button.active { color: var(--btn-primary-fg); }
+  body.dark .bar, body.dark .ocr-text { background: var(--surface-2); border-color: var(--line); }
+  body.dark .btn { background: var(--surface); border-color: var(--line-strong); }
+  body.dark .btn:hover { background: var(--surface-2); border-color: var(--ink-soft); }
+  body.dark .switch .track::before { background: #e9e9ee; }
 
   /* ---- Ajustes para teléfonos pequeños ---- */
   @media (max-width: 480px) {
@@ -1569,7 +1583,9 @@
      ============================================================ -->
 <div class="container view" id="appEscaner">
   <div class="header-row">
-    <button class="icon-btn" type="button" onclick="volverInicio()" aria-label="Volver al inicio" title="Inicio">🏠</button>
+    <button class="icon-btn back" type="button" onclick="volverInicio()" aria-label="Volver" title="Volver">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
     <div class="header-txt">
       <h1>Escáner de Documentos</h1>
       <p class="subtitle">Combina frente y reverso, o centra un documento en una hoja lista para imprimir.</p>
@@ -1776,7 +1792,9 @@
      ============================================================ -->
 <div class="container view" id="appOCR">
   <div class="tool-head">
-    <button class="icon-btn" type="button" onclick="volverInicio()" aria-label="Volver al inicio" title="Inicio">🏠</button>
+    <button class="icon-btn back" type="button" onclick="volverInicio()" aria-label="Volver" title="Volver">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
     <div class="tool-ico">🔎</div>
     <div class="tool-txt">
       <h1>OCR de PDF</h1>
@@ -1853,7 +1871,9 @@
      ============================================================ -->
 <div class="container view" id="appImagen">
   <div class="tool-head">
-    <button class="icon-btn" type="button" onclick="volverInicio()" aria-label="Volver al inicio" title="Inicio">🏠</button>
+    <button class="icon-btn back" type="button" onclick="volverInicio()" aria-label="Volver" title="Volver">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
     <div class="tool-ico">🪄</div>
     <div class="tool-txt">
       <h1>Quitar fondo / WebP</h1>
