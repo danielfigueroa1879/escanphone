@@ -1825,7 +1825,7 @@
       </div>
       <div class="field-row">
         <div class="fr-label">Resultado
-          <small>PDF buscable (imagen + texto) o texto plano</small>
+          <small>El mismo PDF con texto buscable, o texto plano</small>
         </div>
         <div class="seg" id="ocrOutSeg">
           <button type="button" class="active" data-out="pdf" onclick="ocrSetOut(this,'pdf')">PDF buscable</button>
@@ -3548,12 +3548,73 @@
   async function renderPdfPage(pdf, num) {
     const page = await pdf.getPage(num);
     const base = page.getViewport({ scale: 1 });
-    const scale = Math.min(3, Math.max(1, 2000 / Math.max(base.width, base.height)));
+    const scale = Math.min(3, Math.max(1, 2200 / Math.max(base.width, base.height)));
     const vp = page.getViewport({ scale });
     const c = document.createElement('canvas');
     c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
     await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
     return c;
+  }
+
+  // Extrae las palabras reconocidas con sus coordenadas (bbox en píxeles).
+  function extractWords(data) {
+    const words = [];
+    (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p =>
+      (p.lines || []).forEach(l => (l.words || []).forEach(w => {
+        if (w.text && w.bbox) words.push({ text: w.text, bbox: w.bbox });
+      }))));
+    if (!words.length && Array.isArray(data.words)) {
+      data.words.forEach(w => { if (w.text && w.bbox) words.push({ text: w.text, bbox: w.bbox }); });
+    }
+    if (!words.length && data.hocr) {
+      try {
+        const doc = new DOMParser().parseFromString(data.hocr, 'text/html');
+        doc.querySelectorAll('.ocrx_word').forEach(el => {
+          const m = (el.getAttribute('title') || '').match(/bbox (\d+) (\d+) (\d+) (\d+)/);
+          const t = el.textContent || '';
+          if (m && t.trim()) words.push({ text: t, bbox: { x0: +m[1], y0: +m[2], x1: +m[3], y1: +m[4] } });
+        });
+      } catch (_) {}
+    }
+    return words;
+  }
+
+  // Deja solo caracteres representables por la fuente estándar (WinAnsi).
+  function sanitizeWinAnsi(s) {
+    if (!s) return '';
+    s = s.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"')
+         .replace(/[–—]/g, '-').replace(/…/g, '...').replace(/ /g, ' ');
+    let out = '';
+    for (const ch of s) {
+      const c = ch.codePointAt(0);
+      if (c === 9 || (c >= 32 && c <= 126) || (c >= 160 && c <= 255)) out += ch;
+    }
+    return out.trim();
+  }
+
+  function dataURLtoBytes(dataURL) {
+    const bin = atob(dataURL.split(',')[1]);
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  }
+
+  // Dibuja una capa de texto INVISIBLE sobre la página, alineada a la imagen
+  // → el PDF conserva su aspecto original pero queda seleccionable/buscable.
+  function dibujarCapaTexto(page, words, cw, ch, font) {
+    const size0 = page.getSize();
+    const sx = size0.width / cw, sy = size0.height / ch;
+    for (const w of words) {
+      const t = sanitizeWinAnsi(w.text);
+      if (!t) continue;
+      const b = w.bbox;
+      const wordH = (b.y1 - b.y0) * sy;
+      if (!(wordH > 0)) continue;
+      const size = Math.max(1, Math.min(wordH * 0.9, 400));
+      const x = b.x0 * sx;
+      const y = size0.height - b.y1 * sy + wordH * 0.12; // línea base
+      try { page.drawText(t, { x, y, size, font, opacity: 0 }); } catch (_) {}
+    }
   }
 
   window.ocrProcesar = async function () {
@@ -3565,60 +3626,82 @@
     try {
       await cargarScript(CDN.tess);
       const esPdf = ocrFile.type === 'application/pdf' || /\.pdf$/i.test(ocrFile.name);
-      const canvases = [];
+
+      // 1) Fuente de páginas
+      let pdfjsDoc = null, originalBytes = null, total = 1;
       if (esPdf) {
         await cargarScript(CDN.pdfjs);
         window.pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfjsW;
         setBar('ocrBar', 'ocrPct', 'ocrStatus', 6, 'Leyendo el PDF…');
-        const buf = await ocrFile.arrayBuffer();
-        const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
-        for (let i = 1; i <= pdf.numPages; i++) canvases.push(await renderPdfPage(pdf, i));
-      } else {
-        canvases.push(await imageFileToCanvas(ocrFile));
+        originalBytes = new Uint8Array(await ocrFile.arrayBuffer());
+        pdfjsDoc = await window.pdfjsLib.getDocument({ data: originalBytes.slice() }).promise;
+        total = pdfjsDoc.numPages;
       }
 
-      const total = canvases.length;
+      // 2) Documento de salida (PDF): partimos del PDF ORIGINAL y solo le
+      //    agregamos la capa de texto. Así se descarga el mismo archivo,
+      //    idéntico, pero con el OCR ya aplicado.
+      let outDoc = null, usarOriginal = false, font = null;
+      if (ocrOut === 'pdf') {
+        await cargarScript(CDN.pdflib);
+        if (esPdf) {
+          try {
+            outDoc = await window.PDFLib.PDFDocument.load(originalBytes, { ignoreEncryption: true });
+            usarOriginal = outDoc.getPageCount() === total;
+            if (!usarOriginal) outDoc = null;
+          } catch (_) { outDoc = null; }
+        }
+        if (!outDoc) outDoc = await window.PDFLib.PDFDocument.create();
+        font = await outDoc.embedFont(window.PDFLib.StandardFonts.Helvetica);
+      }
+
+      // 3) OCR página por página
       const st = { done: 0 };
       worker = await window.Tesseract.createWorker(ocrLang, 1, {
         logger: m => {
           if (m.status === 'recognizing text' && typeof m.progress === 'number') {
             const frac = (st.done + m.progress) / total;
-            setBar('ocrBar', 'ocrPct', 'ocrStatus', 8 + frac * 88,
+            setBar('ocrBar', 'ocrPct', 'ocrStatus', 8 + frac * 86,
               'Reconociendo texto… (' + Math.min(st.done + 1, total) + '/' + total + ')');
           }
         }
       });
 
-      let textAll = ''; const pagePdfs = [];
-      const outOpts = ocrOut === 'pdf'
-        ? { text: true, pdf: true, blocks: false, hocr: false, tsv: false }
-        : { text: true, blocks: false, hocr: false, tsv: false };
+      let textAll = '';
       for (let i = 0; i < total; i++) {
-        const { data } = await worker.recognize(canvases[i], {}, outOpts);
+        const canvas = esPdf ? await renderPdfPage(pdfjsDoc, i + 1) : await imageFileToCanvas(ocrFile);
+        const { data } = await worker.recognize(canvas, {}, { text: true, blocks: true, hocr: true });
         textAll += (data.text || '') + '\n\n';
-        if (ocrOut === 'pdf' && data.pdf && data.pdf.length) pagePdfs.push(data.pdf);
+
+        if (ocrOut === 'pdf') {
+          const words = extractWords(data);
+          let page;
+          if (usarOriginal) {
+            page = outDoc.getPage(i);
+          } else {
+            const jpg = dataURLtoBytes(canvas.toDataURL('image/jpeg', 0.82));
+            const img = await outDoc.embedJpg(jpg);
+            page = outDoc.addPage([img.width, img.height]);
+            page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+          }
+          dibujarCapaTexto(page, words, canvas.width, canvas.height, font);
+        }
+        canvas.width = canvas.height = 0; // liberar memoria
         st.done++;
-        canvases[i].width = canvases[i].height = 0; // liberar memoria
       }
       await worker.terminate(); worker = null;
       ocrText = textAll.trim();
 
-      setBar('ocrBar', 'ocrPct', 'ocrStatus', 97, 'Generando archivo…');
+      // 4) Generar archivo descargable
+      setBar('ocrBar', 'ocrPct', 'ocrStatus', 96, 'Generando archivo…');
       if (ocrUrl) { URL.revokeObjectURL(ocrUrl); ocrUrl = null; }
       let blob, filename;
-      if (ocrOut === 'pdf' && pagePdfs.length) {
-        await cargarScript(CDN.pdflib);
-        const merged = await window.PDFLib.PDFDocument.create();
-        for (const bytes of pagePdfs) {
-          const src = await window.PDFLib.PDFDocument.load(Uint8Array.from(bytes));
-          (await merged.copyPages(src, src.getPageIndices())).forEach(p => merged.addPage(p));
-        }
-        blob = new Blob([await merged.save()], { type: 'application/pdf' });
-        filename = baseName(ocrFile.name) + '-ocr.pdf';
+      if (ocrOut === 'pdf') {
+        blob = new Blob([await outDoc.save()], { type: 'application/pdf' });
+        filename = esPdf ? ocrFile.name : baseName(ocrFile.name) + '.pdf';
       } else {
-        if (ocrOut === 'pdf') toast('No se pudo crear el PDF; se generó un texto.');
         blob = new Blob([ocrText || ''], { type: 'text/plain;charset=utf-8' });
-        filename = baseName(ocrFile.name) + '-ocr.txt';
+        filename = baseName(ocrFile.name) + '.txt';
       }
       ocrUrl = URL.createObjectURL(blob);
       const dl = $('ocrDownload'); dl.href = ocrUrl; dl.download = filename;
