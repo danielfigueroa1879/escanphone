@@ -1,7 +1,7 @@
 {
   "name": "Escáner de Documentos",
   "short_name": "Escáner",
-  "description": "Combina frente y reverso o centra un documento en una hoja lista para imprimir.",
+  "description": "Caja de herramientas: escáner de documentos, OCR de PDF y editor de imágenes (quitar fondo y convertir a WebP).",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

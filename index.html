@@ -1269,12 +1269,307 @@
 
   /* Hover más sutil sobre botones grandes en oscuro */
   body.dark .opt-btn:hover { border-color: var(--ink-soft); background: var(--surface); }
+
+  /* ============================================================
+     ===============  MENÚ DE INICIO + HERRAMIENTAS  ============
+     ============================================================ */
+
+  /* Cada "vista" (inicio, escáner, OCR, imagen) ocupa la pantalla.
+     Solo una está activa a la vez. */
+  .view { display: none; }
+  .view.active { display: block; animation: fadeIn 0.25s ease; }
+
+  /* --- Encabezado común de las herramientas --- */
+  .tool-head {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 16px;
+  }
+  .tool-head .tool-ico {
+    width: 46px; height: 46px; flex-shrink: 0; border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; background: var(--surface);
+    border: 1.5px solid var(--line);
+  }
+  .tool-head .tool-txt { flex: 1; min-width: 0; }
+  .tool-head h1 { font-size: 19px; margin: 0; letter-spacing: -0.02em; }
+  .tool-head .subtitle { margin: 2px 0 0; font-size: 12.5px; }
+
+  /* Botón redondo reutilizable (inicio / tema) */
+  .icon-btn {
+    width: 44px; height: 44px; flex-shrink: 0;
+    border-radius: 12px; cursor: pointer;
+    background: var(--surface); border: 1.5px solid var(--line-strong);
+    color: var(--ink); display: inline-flex; align-items: center;
+    justify-content: center; font-size: 18px;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, border-color 0.15s, transform 0.05s;
+  }
+  .icon-btn:hover { background: var(--bg); border-color: var(--ink-soft); }
+  .icon-btn:active { transform: scale(0.94); }
+
+  /* --- Galería de herramientas (menú de inicio) --- */
+  .home-hero {
+    background: linear-gradient(135deg, #14141b 0%, #0A0A0A 100%);
+    border-radius: 20px; padding: 26px 22px; color: #fff;
+    margin-bottom: 18px;
+  }
+  .home-hero h2 { font-size: 22px; font-weight: 800; margin: 0 0 6px; letter-spacing: -0.02em; }
+  .home-hero p { font-size: 13px; opacity: 0.8; margin: 0; line-height: 1.5; }
+
+  .section-label {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--ink-mute); margin: 0 4px 12px;
+  }
+
+  .launcher-grid {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  .tool-card {
+    background: var(--surface);
+    border: 1.5px solid var(--line);
+    border-radius: 18px;
+    padding: 20px;
+    cursor: pointer; text-align: left;
+    font-family: inherit; color: var(--ink);
+    display: flex; flex-direction: column; gap: 12px;
+    min-height: 150px;
+    box-shadow: var(--shadow-sm);
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .tool-card:hover { transform: translateY(-3px); border-color: var(--ink-soft); box-shadow: var(--shadow-md); }
+  .tool-card:active { transform: translateY(0); }
+  .tool-card .tc-emoji {
+    width: 56px; height: 56px; border-radius: 15px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 30px; background: var(--bg);
+  }
+  .tool-card h3 { margin: 0; font-size: 17px; font-weight: 700; letter-spacing: -0.01em; }
+  .tool-card p { margin: 2px 0 0; font-size: 13px; color: var(--ink-mute); line-height: 1.4; }
+  .tool-card .tc-go {
+    position: absolute; top: 18px; right: 18px;
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--bg); color: var(--ink-mute);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; transition: background 0.15s, color 0.15s, transform 0.15s;
+  }
+  .tool-card:hover .tc-go { background: var(--ink); color: #fff; transform: translateX(2px); }
+  .tool-card .tc-badge {
+    position: absolute; top: 16px; right: 52px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+    background: var(--brand); color: #fff;
+    padding: 3px 8px; border-radius: 999px; text-transform: uppercase;
+  }
+  .tool-card.soon { opacity: 0.6; cursor: default; }
+  .tool-card.soon:hover { transform: none; border-color: var(--line); box-shadow: var(--shadow-sm); }
+  .tool-card.soon .tc-go { display: none; }
+
+  /* --- Zona para soltar / elegir archivo --- */
+  .drop-zone {
+    border: 2px dashed var(--line-strong);
+    border-radius: 16px; background: var(--surface-2);
+    padding: 30px 18px; text-align: center; cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .drop-zone:hover, .drop-zone.dragover { background: var(--bg); border-color: var(--ink-soft); }
+  .drop-zone .dz-emoji { font-size: 40px; }
+  .drop-zone .dz-title { font-size: 16px; font-weight: 700; margin: 10px 0 4px; }
+  .drop-zone .dz-sub { font-size: 12.5px; color: var(--ink-mute); }
+  .drop-zone .dz-file {
+    display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 600;
+    color: var(--ink); background: var(--surface); border: 1.5px solid var(--line);
+    padding: 6px 14px; border-radius: 999px; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* --- Opciones tipo interruptor / segmentos --- */
+  .field-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 12px 2px;
+  }
+  .field-row + .field-row { border-top: 1px solid var(--line); }
+  .field-row .fr-label { font-size: 14px; font-weight: 600; }
+  .field-row .fr-label small { display: block; font-size: 12px; font-weight: 400; color: var(--ink-mute); margin-top: 2px; }
+
+  .switch { position: relative; width: 50px; height: 30px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .track {
+    position: absolute; inset: 0; border-radius: 999px;
+    background: var(--line-strong); transition: background 0.2s; cursor: pointer;
+  }
+  .switch .track::before {
+    content: ''; position: absolute; width: 24px; height: 24px; left: 3px; top: 3px;
+    border-radius: 50%; background: #fff; transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .switch input:checked + .track { background: var(--brand); }
+  .switch input:checked + .track::before { transform: translateX(20px); }
+
+  .seg { display: inline-flex; background: var(--surface-2); border: 1.5px solid var(--line); border-radius: 12px; padding: 3px; gap: 3px; flex-shrink: 0; }
+  .seg button {
+    border: none; background: transparent; font-family: inherit; font-size: 13px; font-weight: 600;
+    color: var(--ink-soft); padding: 7px 14px; border-radius: 9px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; transition: background 0.15s, color 0.15s;
+  }
+  .seg button.active { background: var(--ink); color: #fff; }
+
+  /* --- Barra de progreso --- */
+  .bar-wrap { margin: 4px 0 2px; }
+  .bar {
+    height: 12px; border-radius: 999px; background: var(--surface-2);
+    border: 1.5px solid var(--line); overflow: hidden;
+  }
+  .bar > span {
+    display: block; height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--brand), #ff6b6f);
+    border-radius: 999px; transition: width 0.25s ease;
+  }
+  .bar-meta { display: flex; justify-content: space-between; margin-top: 8px; font-size: 12.5px; color: var(--ink-mute); }
+  .bar-meta .pct { font-weight: 700; color: var(--ink); }
+
+  /* --- Vista previa de resultado con transparencia --- */
+  .checker {
+    background-color: #fff;
+    background-image:
+      linear-gradient(45deg, #d7d7dd 25%, transparent 25%),
+      linear-gradient(-45deg, #d7d7dd 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #d7d7dd 75%),
+      linear-gradient(-45deg, transparent 75%, #d7d7dd 75%);
+    background-size: 18px 18px;
+    background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+    border-radius: 12px; border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    padding: 10px; min-height: 120px;
+  }
+  .checker img { max-width: 100%; max-height: 48vh; display: block; border-radius: 6px; }
+
+  .ocr-text {
+    margin-top: 12px; white-space: pre-wrap; word-break: break-word;
+    font-size: 13px; line-height: 1.5; color: var(--ink-soft);
+    max-height: 240px; overflow: auto;
+    background: var(--surface-2); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px;
+  }
+
+  /* Botones de acción de las herramientas */
+  .tool-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .btn {
+    flex: 1 1 auto; min-width: 130px;
+    border: 1.5px solid var(--line-strong); background: var(--surface);
+    color: var(--ink); font-family: inherit; font-size: 15px; font-weight: 600;
+    padding: 14px 16px; border-radius: 14px; cursor: pointer; text-align: center;
+    -webkit-tap-highlight-color: transparent; text-decoration: none;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    transition: transform 0.05s, background 0.15s, border-color 0.15s, opacity 0.15s;
+  }
+  .btn:hover { border-color: var(--ink-soft); }
+  .btn:active { transform: scale(0.99); }
+  .btn.primary { background: var(--btn-primary-bg); color: var(--btn-primary-fg); border-color: var(--btn-primary-bg); }
+  .btn.brand { background: var(--brand); color: #fff; border-color: var(--brand); }
+  .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+  .btn.full { flex-basis: 100%; }
+
+  body.dark .tool-card .tc-emoji { background: var(--surface-2); }
+  body.dark .drop-zone .dz-file { background: var(--surface-2); }
+  body.dark .checker { background-color: #23232a; background-image:
+      linear-gradient(45deg, #34343d 25%, transparent 25%),
+      linear-gradient(-45deg, #34343d 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #34343d 75%),
+      linear-gradient(-45deg, transparent 75%, #34343d 75%); }
+
+  /* ---- Ajustes para teléfonos pequeños ---- */
+  @media (max-width: 480px) {
+    .launcher-grid { grid-template-columns: 1fr; gap: 12px; }
+    .tool-card { min-height: 0; padding: 16px; flex-direction: row; align-items: center; }
+    .tool-card .tc-emoji { width: 48px; height: 48px; font-size: 26px; border-radius: 13px; }
+    .tool-card .tc-txt { flex: 1; min-width: 0; }
+    .tool-card h3 { font-size: 16px; }
+    .tool-card p { font-size: 12.5px; }
+    .tool-card .tc-go { position: static; }
+    .tool-card .tc-badge { position: static; align-self: flex-start; margin-bottom: 2px; }
+    .home-hero { padding: 22px 18px; }
+    .home-hero h2 { font-size: 20px; }
+    .field-row { flex-wrap: wrap; }
+    .tool-actions .btn { min-width: 0; flex-basis: 100%; }
+    .btn { font-size: 14.5px; padding: 13px 14px; }
+  }
+  @media (max-width: 360px) {
+    .tool-head h1 { font-size: 17px; }
+    .tool-card .tc-emoji { width: 44px; height: 44px; font-size: 23px; }
+  }
 </style>
 </head>
 <body>
 
-<div class="container">
+<!-- Banners globales de instalación (visibles en cualquier vista) -->
+<div class="container" id="globalBanners">
+  <!-- Banner de instalación (Chrome/Android/Edge) -->
+  <div class="install-banner" id="installBanner">
+    <span class="ico">📲</span>
+    <div class="txt">
+      <b>Instalar como app</b>
+      Guárdala en el celular y ábrela como cualquier aplicación.
+    </div>
+    <button type="button" id="btnInstall">Instalar</button>
+    <button type="button" class="dismiss" onclick="ocultarInstall()" title="Ocultar">✕</button>
+  </div>
+  <!-- Instrucciones iOS (Safari no permite instalación automática) -->
+  <div class="ios-hint" id="iosHint">
+    <button class="close" type="button" onclick="ocultarIOS()">✕</button>
+    <b>Instalar en iPhone/iPad</b>
+    Toca el ícono <b>Compartir</b> ⬆︎ abajo en Safari → <b>"Añadir a pantalla de inicio"</b>.
+  </div>
+</div>
+
+<!-- ============================================================
+     ==================  MENÚ DE INICIO (PC)  ==================
+     Galería de herramientas. Para añadir una nueva herramienta:
+       1) agrega una tarjeta al array HERRAMIENTAS del script
+       2) crea su panel <div class="container view" id="...">
+     ============================================================ -->
+<div class="container view active" id="homeLauncher">
   <div class="header-row">
+    <div class="header-txt">
+      <h1>Mis herramientas</h1>
+      <p class="subtitle">Elige una herramienta para comenzar. Se irán agregando más.</p>
+    </div>
+    <button class="theme-toggle" type="button" onclick="cambiarTema()" aria-label="Cambiar tema día/noche" title="Cambiar tema">
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M20 15.5A9 9 0 0 1 8.5 4a1 1 0 0 0-1.4-1.2A11 11 0 1 0 21.2 16.9a1 1 0 0 0-1.2-1.4z"/>
+      </svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/>
+        <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/>
+        <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/>
+      </svg>
+    </button>
+  </div>
+
+  <div class="home-hero">
+    <h2>Caja de herramientas 🧰</h2>
+    <p>Escanea documentos, conviértelos a texto con OCR o edita imágenes. Todo funciona en tu propio dispositivo.</p>
+  </div>
+
+  <div class="section-label">Herramientas disponibles</div>
+  <div class="launcher-grid" id="launcherGrid"><!-- se genera con JS --></div>
+
+  <footer class="footer">
+    © 2026 Todos los derechos reservados.<br>
+    Plataforma desarrollada por <span class="autor">Daniel Figueroa Chacama</span>.<br>
+    <span class="rol">Ingeniero en Informática &amp; Ciberseguridad</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     ======================  ESCÁNER  ==========================
+     ============================================================ -->
+<div class="container view" id="appEscaner">
+  <div class="header-row">
+    <button class="icon-btn" type="button" onclick="volverInicio()" aria-label="Volver al inicio" title="Inicio">🏠</button>
     <div class="header-txt">
       <h1>Escáner de Documentos</h1>
       <p class="subtitle">Combina frente y reverso, o centra un documento en una hoja lista para imprimir.</p>
@@ -1295,24 +1590,6 @@
         <line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/>
       </svg>
     </button>
-  </div>
-
-  <!-- Banner de instalación (Chrome/Android/Edge) -->
-  <div class="install-banner" id="installBanner">
-    <span class="ico">📲</span>
-    <div class="txt">
-      <b>Instalar como app</b>
-      Guárdala en el celular y ábrela como cualquier aplicación.
-    </div>
-    <button type="button" id="btnInstall">Instalar</button>
-    <button type="button" class="dismiss" onclick="ocultarInstall()" title="Ocultar">✕</button>
-  </div>
-
-  <!-- Instrucciones iOS (Safari no permite instalación automática) -->
-  <div class="ios-hint" id="iosHint">
-    <button class="close" type="button" onclick="ocultarIOS()">✕</button>
-    <b>Instalar en iPhone/iPad</b>
-    Toca el ícono <b>Compartir</b> ⬆︎ abajo en Safari → <b>"Añadir a pantalla de inicio"</b>.
   </div>
 
   <!-- Indicador de progreso -->
@@ -1486,6 +1763,174 @@
       </div>
     </div>
   </section>
+
+  <footer class="footer">
+    © 2026 Todos los derechos reservados.<br>
+    Plataforma desarrollada por <span class="autor">Daniel Figueroa Chacama</span>.<br>
+    <span class="rol">Ingeniero en Informática &amp; Ciberseguridad</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     ==================  HERRAMIENTA: OCR PDF  =================
+     ============================================================ -->
+<div class="container view" id="appOCR">
+  <div class="tool-head">
+    <button class="icon-btn" type="button" onclick="volverInicio()" aria-label="Volver al inicio" title="Inicio">🏠</button>
+    <div class="tool-ico">🔎</div>
+    <div class="tool-txt">
+      <h1>OCR de PDF</h1>
+      <p class="subtitle">Convierte un PDF escaneado en texto seleccionable y buscable.</p>
+    </div>
+    <button class="icon-btn" type="button" onclick="cambiarTema()" aria-label="Cambiar tema" title="Tema">🌓</button>
+  </div>
+
+  <div class="card">
+    <input type="file" id="ocrInput" accept="application/pdf,image/*" style="display:none;">
+    <div class="drop-zone" id="ocrDrop" onclick="document.getElementById('ocrInput').click()">
+      <div class="dz-emoji">📄</div>
+      <div class="dz-title">Sube tu PDF</div>
+      <div class="dz-sub">Toca aquí o arrastra un archivo PDF (también acepta imágenes)</div>
+      <div class="dz-file" id="ocrFileName" style="display:none;"></div>
+    </div>
+
+    <div style="margin-top:14px;">
+      <div class="field-row">
+        <div class="fr-label">Idioma del documento
+          <small>Mejora la precisión del reconocimiento</small>
+        </div>
+        <div class="seg" id="ocrLangSeg">
+          <button type="button" class="active" data-lang="spa+eng" onclick="ocrSetLang(this,'spa+eng')">ES + EN</button>
+          <button type="button" data-lang="spa" onclick="ocrSetLang(this,'spa')">Español</button>
+          <button type="button" data-lang="eng" onclick="ocrSetLang(this,'eng')">English</button>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="fr-label">Resultado
+          <small>PDF buscable (imagen + texto) o texto plano</small>
+        </div>
+        <div class="seg" id="ocrOutSeg">
+          <button type="button" class="active" data-out="pdf" onclick="ocrSetOut(this,'pdf')">PDF buscable</button>
+          <button type="button" data-out="txt" onclick="ocrSetOut(this,'txt')">Texto (.txt)</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn brand full" id="ocrRun" style="margin-top:14px;" onclick="ocrProcesar()" disabled>⚙️ Procesar OCR</button>
+  </div>
+
+  <!-- Progreso -->
+  <div class="card" id="ocrProgressCard" style="display:none;">
+    <div class="bar-wrap">
+      <div class="bar"><span id="ocrBar"></span></div>
+      <div class="bar-meta">
+        <span id="ocrStatus">Preparando…</span>
+        <span class="pct" id="ocrPct">0%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resultado -->
+  <div class="card" id="ocrResultCard" style="display:none;">
+    <h2>Resultado</h2>
+    <div class="tool-actions">
+      <a class="btn primary" id="ocrDownload" download="documento-ocr.pdf" href="#">⬇ Descargar</a>
+      <button class="btn" type="button" onclick="ocrCopiar()">📋 Copiar texto</button>
+      <button class="btn" type="button" onclick="ocrReset()">↺ Otro archivo</button>
+    </div>
+    <div class="ocr-text" id="ocrTextPreview"></div>
+  </div>
+
+  <footer class="footer">
+    © 2026 Todos los derechos reservados.<br>
+    Plataforma desarrollada por <span class="autor">Daniel Figueroa Chacama</span>.<br>
+    <span class="rol">Ingeniero en Informática &amp; Ciberseguridad</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     ========  HERRAMIENTA: QUITAR FONDO / CONVERTIR  =========
+     ============================================================ -->
+<div class="container view" id="appImagen">
+  <div class="tool-head">
+    <button class="icon-btn" type="button" onclick="volverInicio()" aria-label="Volver al inicio" title="Inicio">🏠</button>
+    <div class="tool-ico">🪄</div>
+    <div class="tool-txt">
+      <h1>Quitar fondo / WebP</h1>
+      <p class="subtitle">Elimina el fondo de una foto y conviértela a WebP, PNG o JPG.</p>
+    </div>
+    <button class="icon-btn" type="button" onclick="cambiarTema()" aria-label="Cambiar tema" title="Tema">🌓</button>
+  </div>
+
+  <div class="card">
+    <input type="file" id="imgInput" accept="image/png,image/jpeg,image/webp,image/*" style="display:none;">
+    <div class="drop-zone" id="imgDrop" onclick="document.getElementById('imgInput').click()">
+      <div class="dz-emoji">🖼️</div>
+      <div class="dz-title">Sube tu foto</div>
+      <div class="dz-sub">Toca aquí o arrastra una imagen PNG, JPG o WebP</div>
+      <div class="dz-file" id="imgFileName" style="display:none;"></div>
+    </div>
+
+    <div id="imgPreviewWrap" class="checker" style="display:none; margin-top:14px;">
+      <img id="imgPreview" alt="Vista previa">
+    </div>
+
+    <div style="margin-top:14px;">
+      <div class="field-row">
+        <div class="fr-label">Quitar fondo
+          <small>Deja el sujeto con fondo transparente</small>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="imgBgToggle" checked>
+          <span class="track"></span>
+        </label>
+      </div>
+      <div class="field-row">
+        <div class="fr-label">Formato de salida
+          <small>WebP pesa menos; PNG conserva transparencia</small>
+        </div>
+        <div class="seg" id="imgFmtSeg">
+          <button type="button" class="active" data-fmt="webp" onclick="imgSetFmt(this,'webp')">WebP</button>
+          <button type="button" data-fmt="png" onclick="imgSetFmt(this,'png')">PNG</button>
+          <button type="button" data-fmt="jpeg" onclick="imgSetFmt(this,'jpeg')">JPG</button>
+        </div>
+      </div>
+      <div class="field-row" id="imgQualityRow">
+        <div class="fr-label">Calidad
+          <small><span id="imgQualityVal">90</span>% — menor = archivo más liviano</small>
+        </div>
+        <input type="range" id="imgQuality" min="40" max="100" value="90"
+               oninput="document.getElementById('imgQualityVal').textContent=this.value" style="flex:1; max-width:180px;">
+      </div>
+    </div>
+
+    <button class="btn brand full" id="imgRun" style="margin-top:14px;" onclick="imgProcesar()" disabled>✨ Procesar imagen</button>
+  </div>
+
+  <!-- Progreso -->
+  <div class="card" id="imgProgressCard" style="display:none;">
+    <div class="bar-wrap">
+      <div class="bar"><span id="imgBar"></span></div>
+      <div class="bar-meta">
+        <span id="imgStatus">Preparando…</span>
+        <span class="pct" id="imgPct">0%</span>
+      </div>
+    </div>
+    <p class="name-hint" style="margin:10px 0 0;" id="imgHint"></p>
+  </div>
+
+  <!-- Resultado -->
+  <div class="card" id="imgResultCard" style="display:none;">
+    <h2>Resultado</h2>
+    <div class="checker" style="margin-bottom:12px;"><img id="imgResultPreview" alt="Resultado"></div>
+    <div class="bar-meta" style="margin:0 0 10px;">
+      <span id="imgSizeInfo"></span>
+    </div>
+    <div class="tool-actions">
+      <a class="btn primary" id="imgDownload" download="imagen.webp" href="#">⬇ Descargar</a>
+      <button class="btn" type="button" onclick="imgReset()">↺ Otra imagen</button>
+    </div>
+  </div>
 
   <footer class="footer">
     © 2026 Todos los derechos reservados.<br>
@@ -2909,7 +3354,7 @@
     if (sessionStorage.getItem('installDismissed') !== '1' &&
         !window.matchMedia('(display-mode: standalone)').matches) {
       installBannerReady = true;
-      if (pasoActual === 0) banner.classList.add('show');
+      banner.classList.add('show');
     }
   });
 
@@ -2944,6 +3389,352 @@
     document.getElementById('iosHint').classList.remove('show');
     showToast('App instalada');
   });
+</script>
+
+<!-- ============================================================
+     ==========  MENÚ DE INICIO + HERRAMIENTAS NUEVAS  =========
+     Router de vistas, OCR de PDF y editor de imágenes (quitar
+     fondo / convertir a WebP). Todo se ejecuta en el navegador.
+     ============================================================ -->
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const show = id => { const e = $(id); if (e) e.style.display = ''; };
+  const hide = id => { const e = $(id); if (e) e.style.display = 'none'; };
+  const toast = m => { if (typeof window.showToast === 'function') window.showToast(m); };
+  const baseName = n => (n || 'archivo').replace(/\.[^.]+$/, '') || 'archivo';
+
+  // ---------- CDNs (se cargan solo al usar cada herramienta) ----------
+  const CDN = {
+    pdfjs:  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+    pdfjsW: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
+    tess:   'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+    pdflib: 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js',
+    imgly:  'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm'
+  };
+  const _scripts = {};
+  function cargarScript(src) {
+    if (_scripts[src]) return _scripts[src];
+    _scripts[src] = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = src; s.async = true;
+      s.onload = () => res();
+      s.onerror = () => rej(new Error('No se pudo cargar un componente. Revisa tu conexión.'));
+      document.head.appendChild(s);
+    });
+    return _scripts[src];
+  }
+
+  // ------------------------- Router de vistas -------------------------
+  function mostrarVista(id) {
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
+    window.scrollTo(0, 0);
+  }
+  function abrirHerramienta(id) {
+    mostrarVista(id);
+    try { history.pushState({ view: id }, ''); } catch (_) {}
+  }
+  function volverInicio() {
+    mostrarVista('homeLauncher');
+    try { history.pushState({ view: 'homeLauncher' }, ''); } catch (_) {}
+  }
+  window.abrirHerramienta = abrirHerramienta;
+  window.volverInicio = volverInicio;
+  window.addEventListener('popstate', e => {
+    mostrarVista((e.state && e.state.view) || 'homeLauncher');
+  });
+
+  // --------------------- Catálogo de herramientas ---------------------
+  // Para agregar una herramienta nueva: añade una entrada aquí y crea
+  // su panel <div class="container view" id="...">.
+  const HERRAMIENTAS = [
+    { id: 'appEscaner', emoji: '📄', title: 'Escáner de Documentos',
+      desc: 'Combina frente y reverso o centra un documento para imprimir.' },
+    { id: 'appOCR', emoji: '🔎', title: 'OCR de PDF', badge: 'Nuevo',
+      desc: 'Convierte un PDF escaneado en texto seleccionable y buscable.' },
+    { id: 'appImagen', emoji: '🪄', title: 'Quitar fondo / WebP', badge: 'Nuevo',
+      desc: 'Elimina el fondo de una foto y conviértela a WebP, PNG o JPG.' },
+    { soon: true, emoji: '➕', title: 'Más herramientas', desc: 'Se irán agregando pronto.' }
+  ];
+  function renderLauncher() {
+    const grid = $('launcherGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    HERRAMIENTAS.forEach(t => {
+      const card = document.createElement(t.soon ? 'div' : 'button');
+      card.className = 'tool-card' + (t.soon ? ' soon' : '');
+      if (!t.soon) { card.type = 'button'; card.addEventListener('click', () => abrirHerramienta(t.id)); }
+      card.innerHTML =
+        '<div class="tc-emoji">' + t.emoji + '</div>' +
+        '<div class="tc-txt"><h3>' + t.title + '</h3><p>' + t.desc + '</p></div>' +
+        (t.badge ? '<span class="tc-badge">' + t.badge + '</span>' : '') +
+        (t.soon ? '' : '<span class="tc-go">›</span>');
+      grid.appendChild(card);
+    });
+  }
+
+  // ------------------------- Utilidades UI ---------------------------
+  function setBar(barId, pctId, statusId, pct, status) {
+    const p = Math.max(0, Math.min(100, pct));
+    if ($(barId)) $(barId).style.width = p + '%';
+    if ($(pctId)) $(pctId).textContent = Math.round(p) + '%';
+    if (statusId && status != null && $(statusId)) $(statusId).textContent = status;
+  }
+  function segActivate(segId, btn) {
+    const seg = $(segId); if (!seg) return;
+    seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+  }
+  function imageFileToCanvas(file) {
+    return new Promise((res, rej) => {
+      const img = new Image(); const u = URL.createObjectURL(file);
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        URL.revokeObjectURL(u); res(c);
+      };
+      img.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer la imagen.')); };
+      img.src = u;
+    });
+  }
+
+  // ==================================================================
+  // ==========================  OCR DE PDF  ==========================
+  // ==================================================================
+  let ocrLang = 'spa+eng', ocrOut = 'pdf', ocrFile = null, ocrText = '', ocrBusy = false, ocrUrl = null;
+
+  window.ocrSetLang = (btn, l) => { ocrLang = l; segActivate('ocrLangSeg', btn); };
+  window.ocrSetOut = (btn, o) => { ocrOut = o; segActivate('ocrOutSeg', btn); };
+
+  function ocrPick(file) {
+    if (!file) return;
+    ocrFile = file;
+    const fn = $('ocrFileName'); fn.textContent = '📎 ' + file.name; fn.style.display = 'inline-block';
+    $('ocrRun').disabled = false;
+    hide('ocrProgressCard'); hide('ocrResultCard');
+  }
+  window.ocrReset = () => {
+    ocrFile = null; ocrText = '';
+    $('ocrInput').value = ''; $('ocrFileName').style.display = 'none';
+    $('ocrRun').disabled = true; hide('ocrProgressCard'); hide('ocrResultCard');
+  };
+  window.ocrCopiar = () => {
+    if (!ocrText) { toast('No hay texto para copiar'); return; }
+    (navigator.clipboard ? navigator.clipboard.writeText(ocrText) : Promise.reject())
+      .then(() => toast('📋 Texto copiado')).catch(() => toast('No se pudo copiar'));
+  };
+
+  async function renderPdfPage(pdf, num) {
+    const page = await pdf.getPage(num);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, Math.max(1, 2000 / Math.max(base.width, base.height)));
+    const vp = page.getViewport({ scale });
+    const c = document.createElement('canvas');
+    c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    return c;
+  }
+
+  window.ocrProcesar = async function () {
+    if (ocrBusy || !ocrFile) return;
+    ocrBusy = true; $('ocrRun').disabled = true;
+    show('ocrProgressCard'); hide('ocrResultCard');
+    setBar('ocrBar', 'ocrPct', 'ocrStatus', 3, 'Cargando componentes…');
+    let worker = null;
+    try {
+      await cargarScript(CDN.tess);
+      const esPdf = ocrFile.type === 'application/pdf' || /\.pdf$/i.test(ocrFile.name);
+      const canvases = [];
+      if (esPdf) {
+        await cargarScript(CDN.pdfjs);
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfjsW;
+        setBar('ocrBar', 'ocrPct', 'ocrStatus', 6, 'Leyendo el PDF…');
+        const buf = await ocrFile.arrayBuffer();
+        const pdf = await window.pdfjsLib.getDocument({ data: buf }).promise;
+        for (let i = 1; i <= pdf.numPages; i++) canvases.push(await renderPdfPage(pdf, i));
+      } else {
+        canvases.push(await imageFileToCanvas(ocrFile));
+      }
+
+      const total = canvases.length;
+      const st = { done: 0 };
+      worker = await window.Tesseract.createWorker(ocrLang, 1, {
+        logger: m => {
+          if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+            const frac = (st.done + m.progress) / total;
+            setBar('ocrBar', 'ocrPct', 'ocrStatus', 8 + frac * 88,
+              'Reconociendo texto… (' + Math.min(st.done + 1, total) + '/' + total + ')');
+          }
+        }
+      });
+
+      let textAll = ''; const pagePdfs = [];
+      const outOpts = ocrOut === 'pdf'
+        ? { text: true, pdf: true, blocks: false, hocr: false, tsv: false }
+        : { text: true, blocks: false, hocr: false, tsv: false };
+      for (let i = 0; i < total; i++) {
+        const { data } = await worker.recognize(canvases[i], {}, outOpts);
+        textAll += (data.text || '') + '\n\n';
+        if (ocrOut === 'pdf' && data.pdf && data.pdf.length) pagePdfs.push(data.pdf);
+        st.done++;
+        canvases[i].width = canvases[i].height = 0; // liberar memoria
+      }
+      await worker.terminate(); worker = null;
+      ocrText = textAll.trim();
+
+      setBar('ocrBar', 'ocrPct', 'ocrStatus', 97, 'Generando archivo…');
+      if (ocrUrl) { URL.revokeObjectURL(ocrUrl); ocrUrl = null; }
+      let blob, filename;
+      if (ocrOut === 'pdf' && pagePdfs.length) {
+        await cargarScript(CDN.pdflib);
+        const merged = await window.PDFLib.PDFDocument.create();
+        for (const bytes of pagePdfs) {
+          const src = await window.PDFLib.PDFDocument.load(Uint8Array.from(bytes));
+          (await merged.copyPages(src, src.getPageIndices())).forEach(p => merged.addPage(p));
+        }
+        blob = new Blob([await merged.save()], { type: 'application/pdf' });
+        filename = baseName(ocrFile.name) + '-ocr.pdf';
+      } else {
+        if (ocrOut === 'pdf') toast('No se pudo crear el PDF; se generó un texto.');
+        blob = new Blob([ocrText || ''], { type: 'text/plain;charset=utf-8' });
+        filename = baseName(ocrFile.name) + '-ocr.txt';
+      }
+      ocrUrl = URL.createObjectURL(blob);
+      const dl = $('ocrDownload'); dl.href = ocrUrl; dl.download = filename;
+      $('ocrTextPreview').textContent = ocrText || '(No se detectó texto en el documento.)';
+      setBar('ocrBar', 'ocrPct', 'ocrStatus', 100, '¡Listo! Descarga tu archivo.');
+      show('ocrResultCard');
+    } catch (e) {
+      console.error(e);
+      setBar('ocrBar', 'ocrPct', 'ocrStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló el OCR'));
+      $('ocrRun').disabled = false;
+    } finally {
+      if (worker) { try { await worker.terminate(); } catch (_) {} }
+      ocrBusy = false;
+    }
+  };
+
+  // ==================================================================
+  // ================  QUITAR FONDO / CONVERTIR A WEBP  ===============
+  // ==================================================================
+  let imgFmt = 'webp', imgFile = null, imgBusy = false, imgUrl = null, imgSrcUrl = null;
+
+  window.imgSetFmt = (btn, f) => {
+    imgFmt = f; segActivate('imgFmtSeg', btn);
+    $('imgQualityRow').style.display = (f === 'png') ? 'none' : 'flex';
+    const dl = $('imgDownload'); if (dl && imgFile) dl.download = baseName(imgFile.name) + '.' + (f === 'jpeg' ? 'jpg' : f);
+  };
+
+  function imgPick(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type) && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      toast('Elige una imagen (PNG, JPG o WebP)'); return;
+    }
+    imgFile = file;
+    const fn = $('imgFileName'); fn.textContent = '📎 ' + file.name; fn.style.display = 'inline-block';
+    if (imgSrcUrl) URL.revokeObjectURL(imgSrcUrl);
+    imgSrcUrl = URL.createObjectURL(file);
+    $('imgPreview').src = imgSrcUrl; $('imgPreviewWrap').style.display = 'flex';
+    $('imgRun').disabled = false;
+    hide('imgProgressCard'); hide('imgResultCard');
+  }
+  window.imgReset = () => {
+    imgFile = null; $('imgInput').value = '';
+    $('imgFileName').style.display = 'none'; $('imgPreviewWrap').style.display = 'none';
+    $('imgRun').disabled = true; hide('imgProgressCard'); hide('imgResultCard');
+  };
+
+  function convertir(srcBlob, fmt) {
+    return new Promise((res, rej) => {
+      const img = new Image(); const u = URL.createObjectURL(srcBlob);
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const ctx = c.getContext('2d');
+        let mime = fmt === 'png' ? 'image/png' : fmt === 'jpeg' ? 'image/jpeg' : 'image/webp';
+        if (mime === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(u);
+        const q = (+$('imgQuality').value) / 100;
+        const done = (b, usedFmt) => b ? res({ blob: b, fmt: usedFmt }) : rej(new Error('No se pudo convertir la imagen.'));
+        c.toBlob(b => {
+          if (!b && mime === 'image/webp') { // Safari antiguo sin WebP → PNG
+            toast('Tu navegador no exporta WebP; se usó PNG.');
+            c.toBlob(b2 => done(b2, 'png'), 'image/png');
+          } else done(b, fmt);
+        }, mime, q);
+      };
+      img.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer la imagen.')); };
+      img.src = u;
+    });
+  }
+
+  window.imgProcesar = async function () {
+    if (imgBusy || !imgFile) return;
+    imgBusy = true; $('imgRun').disabled = true;
+    show('imgProgressCard'); hide('imgResultCard'); $('imgHint').textContent = '';
+    const quitarFondo = $('imgBgToggle').checked;
+    try {
+      let sourceBlob = imgFile;
+      if (quitarFondo) {
+        setBar('imgBar', 'imgPct', 'imgStatus', 4, 'Cargando modelo de IA…');
+        $('imgHint').textContent = 'La primera vez se descarga el modelo (~40 MB). Puede tardar según tu conexión.';
+        const mod = await import(CDN.imgly);
+        const removeBackground = mod.removeBackground || mod.default;
+        if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
+        sourceBlob = await removeBackground(imgFile, {
+          output: { format: 'image/png' },
+          progress: (key, cur, tot) => {
+            const pct = tot ? 6 + (cur / tot) * 78 : 40;
+            setBar('imgBar', 'imgPct', 'imgStatus', pct,
+              /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
+          }
+        });
+        $('imgHint').textContent = '';
+      }
+      setBar('imgBar', 'imgPct', 'imgStatus', 88, 'Convirtiendo…');
+      const { blob, fmt } = await convertir(sourceBlob, imgFmt);
+
+      if (imgUrl) URL.revokeObjectURL(imgUrl);
+      imgUrl = URL.createObjectURL(blob);
+      $('imgResultPreview').src = imgUrl;
+      const ext = fmt === 'jpeg' ? 'jpg' : fmt;
+      const dl = $('imgDownload'); dl.href = imgUrl; dl.download = baseName(imgFile.name) + '.' + ext;
+      $('imgSizeInfo').textContent = fmt.toUpperCase() + ' · ' + Math.max(1, Math.round(blob.size / 1024)) + ' KB';
+      setBar('imgBar', 'imgPct', 'imgStatus', 100, '¡Listo! Descarga tu imagen.');
+      show('imgResultCard');
+    } catch (e) {
+      console.error(e);
+      setBar('imgBar', 'imgPct', 'imgStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló el proceso'));
+      $('imgRun').disabled = false;
+    } finally {
+      imgBusy = false;
+    }
+  };
+
+  // --------------------- Cableado de inputs/drag&drop ---------------------
+  function wireDrop(zoneId, onFile) {
+    const z = $(zoneId); if (!z) return;
+    ['dragenter', 'dragover'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.add('dragover'); }));
+    ['dragleave', 'dragend', 'drop'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.remove('dragover'); }));
+    z.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) onFile(f); });
+  }
+
+  function init() {
+    renderLauncher();
+    $('ocrInput').addEventListener('change', e => ocrPick(e.target.files[0]));
+    $('imgInput').addEventListener('change', e => imgPick(e.target.files[0]));
+    wireDrop('ocrDrop', ocrPick);
+    wireDrop('imgDrop', imgPick);
+    // Estado inicial del historial para el botón "atrás".
+    try { history.replaceState({ view: 'homeLauncher' }, ''); } catch (_) {}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
 </script>
 </body>
 </html>
