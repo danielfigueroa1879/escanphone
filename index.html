@@ -1491,6 +1491,11 @@
   body.dark .bar, body.dark .ocr-text { background: var(--surface-2); border-color: var(--line); }
   body.dark .btn { background: var(--surface); border-color: var(--line-strong); }
   body.dark .btn:hover { background: var(--surface-2); border-color: var(--ink-soft); }
+  /* Botón principal (Descargar) y de marca: mantienen su color en modo noche */
+  body.dark .btn.primary { background: var(--btn-primary-bg); color: var(--btn-primary-fg); border-color: var(--btn-primary-bg); }
+  body.dark .btn.primary:hover { background: #e6e6ec; border-color: #e6e6ec; }
+  body.dark .btn.brand { background: var(--brand); color: #fff; border-color: var(--brand); }
+  body.dark .btn.brand:hover { background: #ff5a5f; border-color: #ff5a5f; }
   body.dark .switch .track::before { background: #e9e9ee; }
 
   /* ---- Ajustes para teléfonos pequeños ---- */
@@ -3698,10 +3703,10 @@
       let blob, filename;
       if (ocrOut === 'pdf') {
         blob = new Blob([await outDoc.save()], { type: 'application/pdf' });
-        filename = esPdf ? ocrFile.name : baseName(ocrFile.name) + '.pdf';
+        filename = baseName(ocrFile.name) + '_ocr.pdf';
       } else {
         blob = new Blob([ocrText || ''], { type: 'text/plain;charset=utf-8' });
-        filename = baseName(ocrFile.name) + '.txt';
+        filename = baseName(ocrFile.name) + '_ocr.txt';
       }
       ocrUrl = URL.createObjectURL(blob);
       const dl = $('ocrDownload'); dl.href = ocrUrl; dl.download = filename;
