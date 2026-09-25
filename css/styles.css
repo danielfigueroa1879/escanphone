@@ -1447,21 +1447,35 @@
   /* ============ Banner superior global + menú hamburguesa ============ */
   .appbar {
     position: sticky; top: 0; z-index: 60;
-    display: flex; align-items: center; gap: 12px;
-    padding: 12px 16px;
-    padding-top: calc(12px + env(safe-area-inset-top, 0px));
-    background: var(--brand); color: #fff;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.16);
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    padding-top: calc(10px + env(safe-area-inset-top, 0px));
+    /* Blanco semitransparente con efecto vidrio (modo claro) */
+    background: rgba(255,255,255,0.72);
+    -webkit-backdrop-filter: saturate(160%) blur(14px);
+    backdrop-filter: saturate(160%) blur(14px);
+    border-bottom: 1px solid rgba(0,0,0,0.08);
+    color: var(--ink);
   }
   .appbar-burger {
     display: inline-flex; align-items: center; justify-content: center;
-    width: 42px; height: 42px; flex: 0 0 auto;
-    background: rgba(255,255,255,0.16); color: #fff;
+    width: 40px; height: 40px; flex: 0 0 auto;
+    background: rgba(0,0,0,0.06); color: var(--ink);
     border: none; border-radius: 12px; cursor: pointer;
     -webkit-tap-highlight-color: transparent; transition: background 0.15s;
   }
-  .appbar-burger:hover, .appbar-burger:active { background: rgba(255,255,255,0.28); }
-  .appbar-title { font-size: 18px; font-weight: 800; letter-spacing: 0.2px; }
+  .appbar-burger:hover, .appbar-burger:active { background: rgba(0,0,0,0.12); }
+  .appbar-title { font-size: 17px; font-weight: 800; letter-spacing: 0.2px; color: var(--ink); }
+
+  /* Modo oscuro: negro translúcido con vidrio, texto e íconos claros */
+  body.dark .appbar {
+    background: rgba(0,0,0,0.55);
+    border-bottom-color: rgba(255,255,255,0.12);
+    color: #fff;
+  }
+  body.dark .appbar-burger { background: rgba(255,255,255,0.12); color: #fff; }
+  body.dark .appbar-burger:hover, body.dark .appbar-burger:active { background: rgba(255,255,255,0.22); }
+  body.dark .appbar-title { color: #fff; }
 
   /* Fondo oscurecido al abrir el menú */
   .drawer-overlay {
