@@ -12,7 +12,10 @@
     pdfjsW: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
     tess:   'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
     pdflib: 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js',
-    imgly:  'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm'
+    imgly:  'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm',
+    tfjs:   'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js',
+    upModel:'https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@1.0.0/dist/umd/index.min.js',
+    upscaler:'https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js'
   };
   const _scripts = {};
   function cargarScript(src) {
@@ -60,8 +63,8 @@
       desc: 'Elimina el fondo de una foto y déjala transparente.' },
     { id: 'appColor', emoji: '🎨', title: 'Cambiar fondo de color', badge: 'Nuevo',
       desc: 'Pon fondo blanco, azul, verde o rojo detrás de la foto.' },
-    { id: 'appAmpliar', emoji: '🔍', title: 'Ampliar foto', badge: 'Nuevo',
-      desc: 'Agranda la foto 2×, 3× o 4× manteniendo la nitidez posible.' },
+    { id: 'appAmpliar', emoji: '🔍', title: 'Ampliar foto', badge: 'IA',
+      desc: 'Agranda la foto 2×, 3× o 4× con IA (súper resolución).' },
     { soon: true, emoji: '➕', title: 'Más herramientas', desc: 'Se irán agregando pronto.' }
   ];
   function renderLauncher() {
@@ -717,48 +720,97 @@
     $('ampRun').disabled = true; hide('ampProgressCard');
   };
 
-  // Ampliación por pasos (x2 sucesivos con suavizado alto) → mejor calidad
-  // que un único salto grande.
+  function srcToImage(src) {
+    return new Promise((res, rej) => {
+      const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('recorte')); i.src = src;
+    });
+  }
+
+  // Redimensiona un lienzo/imagen a un tamaño exacto con suavizado alto.
+  function redimensionar(fuente, tw, th) {
+    const c = document.createElement('canvas'); c.width = tw; c.height = th;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(fuente, 0, 0, tw, th);
+    return c;
+  }
+
+  // Ampliación rápida por pasos (x2 sucesivos con suavizado alto).
   function ampliarCanvas(img, tw, th) {
-    let cur = document.createElement('canvas');
-    cur.width = img.naturalWidth; cur.height = img.naturalHeight;
-    cur.getContext('2d').drawImage(img, 0, 0);
+    let cur = redimensionar(img, img.naturalWidth, img.naturalHeight);
     while (cur.width < tw || cur.height < th) {
-      const nw = Math.min(tw, cur.width * 2), nh = Math.min(th, cur.height * 2);
-      const nx = document.createElement('canvas'); nx.width = nw; nx.height = nh;
-      const ctx = nx.getContext('2d');
-      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(cur, 0, 0, nw, nh);
-      cur = nx;
+      cur = redimensionar(cur, Math.min(tw, cur.width * 2), Math.min(th, cur.height * 2));
     }
     return cur;
+  }
+
+  // Ampliación con IA (super-resolución ESRGAN 2× en el navegador). Encadena
+  // 2×→4× y ajusta al factor exacto con lienzo. progreso: 0..1.
+  async function ampliarIA(img, factor, prog) {
+    await cargarScript(CDN.tfjs);
+    await cargarScript(CDN.upModel);
+    await cargarScript(CDN.upscaler);
+    if (!window.Upscaler || !window.DefaultUpscalerJSModel) throw new Error('IA no disponible');
+    const upscaler = new window.Upscaler({ model: window.DefaultUpscalerJSModel });
+    const grande = Math.max(img.naturalWidth, img.naturalHeight) > 1000;
+    const opts = grande ? { patchSize: 64, padding: 2 } : {};
+    // 1ª pasada 2×
+    let src = await upscaler.upscale(img, Object.assign({}, opts, { progress: r => prog(0.05 + r * (factor >= 4 ? 0.45 : 0.85)) }));
+    let cur = await srcToImage(src);
+    if (factor >= 4) { // 2ª pasada → 4×
+      src = await upscaler.upscale(cur, Object.assign({}, opts, { progress: r => prog(0.50 + r * 0.40) }));
+      cur = await srcToImage(src);
+    }
+    try { upscaler.dispose && upscaler.dispose(); } catch (_) {}
+    let tw = Math.round(img.naturalWidth * factor), th = Math.round(img.naturalHeight * factor);
+    const m = Math.max(tw, th);
+    if (m > AMP_MAX) { const k = AMP_MAX / m; tw = Math.round(tw * k); th = Math.round(th * k); }
+    return redimensionar(cur, tw, th); // ajuste al factor exacto (2×/3×/4×)
+  }
+
+  async function ampFinalizar(canvas) {
+    const mime = ampMime === 'image/png' ? 'image/png' : ampMime;
+    const q = mime === 'image/png' ? undefined : 0.92;
+    let blob = await toBlobAsync(canvas, mime, q);
+    let ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
+    if (!blob) { blob = await toBlobAsync(canvas, 'image/png'); ext = 'png'; }
+    if (ampUrl) URL.revokeObjectURL(ampUrl);
+    ampUrl = URL.createObjectURL(blob);
+    $('ampPreview').src = ampUrl;
+    const dl = $('ampDownload'); dl.href = ampUrl; dl.download = baseName(ampFile.name) + '-ampliada.' + ext;
+    $('ampNewDims').textContent = canvas.width + '×' + canvas.height + ' px';
+    $('ampNewSize').textContent = kb(blob.size);
+    $('ampNewWrap').style.display = ''; dl.style.display = '';
   }
 
   window.ampProcesar = async function () {
     if (ampBusy || !ampImgEl) return;
     ampBusy = true; $('ampRun').disabled = true;
     show('ampProgressCard'); hide('ampNewWrap'); hide('ampDownload');
-    setBar('ampBar', 'ampPct', 'ampStatus', 20, 'Ampliando…');
+    let tw = Math.round(ampImgEl.naturalWidth * ampFactor);
+    let th = Math.round(ampImgEl.naturalHeight * ampFactor);
+    const m = Math.max(tw, th);
+    if (m > AMP_MAX) { const k = AMP_MAX / m; tw = Math.round(tw * k); th = Math.round(th * k); toast('Se limitó el tamaño para evitar errores de memoria.'); }
+    const usarIA = $('ampIAToggle') && $('ampIAToggle').checked;
     try {
-      let tw = Math.round(ampImgEl.naturalWidth * ampFactor);
-      let th = Math.round(ampImgEl.naturalHeight * ampFactor);
-      const m = Math.max(tw, th);
-      if (m > AMP_MAX) { const k = AMP_MAX / m; tw = Math.round(tw * k); th = Math.round(th * k); toast('Se limitó el tamaño para evitar errores de memoria.'); }
-      await new Promise(r => setTimeout(r, 30)); // deja pintar la barra
-      const canvas = ampliarCanvas(ampImgEl, tw, th);
-      setBar('ampBar', 'ampPct', 'ampStatus', 85, 'Generando archivo…');
-      const mime = ampMime === 'image/png' ? 'image/png' : ampMime;
-      const q = mime === 'image/png' ? undefined : 0.92;
-      let blob = await new Promise(res => canvas.toBlob(res, mime, q));
-      let ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
-      if (!blob) { blob = await new Promise(res => canvas.toBlob(res, 'image/png')); ext = 'png'; }
-      if (ampUrl) URL.revokeObjectURL(ampUrl);
-      ampUrl = URL.createObjectURL(blob);
-      $('ampPreview').src = ampUrl;
-      const dl = $('ampDownload'); dl.href = ampUrl; dl.download = baseName(ampFile.name) + '-ampliada.' + ext;
-      $('ampNewDims').textContent = tw + '×' + th + ' px';
-      $('ampNewSize').textContent = kb(blob.size);
-      $('ampNewWrap').style.display = ''; dl.style.display = '';
+      let canvas;
+      if (usarIA) {
+        setBar('ampBar', 'ampPct', 'ampStatus', 3, 'Cargando IA…');
+        try {
+          canvas = await ampliarIA(ampImgEl, ampFactor,
+            r => setBar('ampBar', 'ampPct', 'ampStatus', Math.min(95, 5 + r * 90), 'Mejorando con IA…'));
+        } catch (e) {
+          console.error(e);
+          toast('La IA no está disponible ahora; se usó el modo rápido.');
+          canvas = ampliarCanvas(ampImgEl, tw, th);
+        }
+      } else {
+        setBar('ampBar', 'ampPct', 'ampStatus', 30, 'Ampliando…');
+        await new Promise(r => setTimeout(r, 30));
+        canvas = ampliarCanvas(ampImgEl, tw, th);
+      }
+      setBar('ampBar', 'ampPct', 'ampStatus', 96, 'Generando archivo…');
+      await ampFinalizar(canvas);
       setBar('ampBar', 'ampPct', 'ampStatus', 100, '¡Listo! Descarga tu foto.');
     } catch (e) {
       console.error(e);

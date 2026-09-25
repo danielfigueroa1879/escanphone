@@ -691,7 +691,7 @@
     <div class="tool-ico">🔍</div>
     <div class="tool-txt">
       <h1>Ampliar foto</h1>
-      <p class="subtitle">Agranda la foto 2×, 3× o 4× con el mejor suavizado posible.</p>
+      <p class="subtitle">Agranda la foto 2×, 3× o 4× con IA (súper resolución) en tu dispositivo.</p>
     </div>
     <button class="icon-btn" type="button" onclick="cambiarTema()" aria-label="Cambiar tema" title="Tema">🌓</button>
   </div>
@@ -724,6 +724,15 @@
 
     <div style="margin-top:14px;">
       <div class="field-row">
+        <div class="fr-label">Mejorar con IA
+          <small>Súper resolución: recupera nitidez (más lento)</small>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="ampIAToggle" checked>
+          <span class="track"></span>
+        </label>
+      </div>
+      <div class="field-row">
         <div class="fr-label">Ampliación
           <small>Cuánto se agranda la foto</small>
         </div>
@@ -736,6 +745,7 @@
     </div>
 
     <button class="btn brand full" id="ampRun" style="margin-top:14px;" onclick="ampProcesar()" disabled>🔍 Ampliar foto</button>
+    <p class="name-hint" style="margin:12px 2px 0;">La IA descarga un modelo (~5 MB) la primera vez y usa la GPU si está disponible. Si falla, usa el modo rápido automáticamente.</p>
   </div>
 
   <div class="card" id="ampProgressCard" style="display:none;">
