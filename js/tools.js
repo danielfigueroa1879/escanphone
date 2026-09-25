@@ -671,12 +671,22 @@
   // ==================================================================
   let ampFile = null, ampImgEl = null, ampFactor = 2, ampMime = 'image/png',
       ampBusy = false, ampUrl = null, ampSrcUrl = null;
-  const AMP_MAX = 8000; // límite de seguridad para el lado mayor (px)
+  const AMP_MAX = 8000;   // límite de seguridad para el lado mayor de SALIDA (px)
+  const AMP_MAX_IN = 2000; // tope del lado mayor de ENTRADA para la IA (px)
 
   window.ampSetFactor = (btn, f) => {
     ampFactor = f; segActivate('ampFactorSeg', btn);
-    if (ampImgEl) ampActualizarNuevo();
+    if (ampImgEl) { ampActualizarNuevo(); ampActualizarAviso(); }
   };
+
+  // Muestra el aviso cuando la IA puede tardar (foto grande o factor alto).
+  function ampActualizarAviso() {
+    const el = $('ampAviso'); if (!el) return;
+    const ia = $('ampIAToggle') && $('ampIAToggle').checked;
+    if (!ampImgEl || !ia) { el.style.display = 'none'; return; }
+    const side = Math.max(ampImgEl.naturalWidth, ampImgEl.naturalHeight);
+    el.style.display = (side > 1500 || (side > 1000 && ampFactor >= 4)) ? '' : 'none';
+  }
 
   function ampActualizarNuevo() {
     if (!ampImgEl) return;
@@ -709,7 +719,7 @@
       hide('ampDrop'); $('ampThumbRow').style.display = 'flex';
       hide('ampNewWrap'); hide('ampDownload'); hide('ampProgressCard');
       $('ampRun').disabled = false;
-      ampActualizarNuevo();
+      ampActualizarNuevo(); ampActualizarAviso();
     };
     img.onerror = () => { toast('No se pudo leer la imagen.'); };
     img.src = ampSrcUrl;
@@ -752,10 +762,19 @@
     await cargarScript(CDN.upscaler);
     if (!window.Upscaler || !window.DefaultUpscalerJSModel) throw new Error('IA no disponible');
     const upscaler = new window.Upscaler({ model: window.DefaultUpscalerJSModel });
-    const grande = Math.max(img.naturalWidth, img.naturalHeight) > 1000;
+    // Tope de entrada: si la foto es enorme, se reduce antes de la IA para
+    // que no se congele. El tamaño final se logra igual con el lienzo.
+    let entrada = img;
+    const maxSide = Math.max(img.naturalWidth, img.naturalHeight);
+    if (maxSide > AMP_MAX_IN) {
+      const k = AMP_MAX_IN / maxSide;
+      entrada = redimensionar(img, Math.round(img.naturalWidth * k), Math.round(img.naturalHeight * k));
+      toast('Foto muy grande: se optimizó la entrada para la IA.');
+    }
+    const grande = Math.max(entrada.width || entrada.naturalWidth, entrada.height || entrada.naturalHeight) > 1000;
     const opts = grande ? { patchSize: 64, padding: 2 } : {};
     // 1ª pasada 2×
-    let src = await upscaler.upscale(img, Object.assign({}, opts, { progress: r => prog(0.05 + r * (factor >= 4 ? 0.45 : 0.85)) }));
+    let src = await upscaler.upscale(entrada, Object.assign({}, opts, { progress: r => prog(0.05 + r * (factor >= 4 ? 0.45 : 0.85)) }));
     let cur = await srcToImage(src);
     if (factor >= 4) { // 2ª pasada → 4×
       src = await upscaler.upscale(cur, Object.assign({}, opts, { progress: r => prog(0.50 + r * 0.40) }));
@@ -837,6 +856,7 @@
     $('fondoInput').addEventListener('change', e => fondoPick(e.target.files[0]));
     $('colorInput').addEventListener('change', e => colorPick(e.target.files[0]));
     $('ampInput').addEventListener('change', e => ampPick(e.target.files[0]));
+    $('ampIAToggle').addEventListener('change', ampActualizarAviso);
     wireDrop('ocrDrop', ocrPick);
     wireDrop('imgDrop', imgPick);
     wireDrop('fondoDrop', fondoPick);
