@@ -1416,9 +1416,14 @@
   .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
   .btn.full { flex-basis: 100%; }
 
-  /* Botones de acción apilados a ancho completo e idéntico (Ampliar foto) */
+  /* Botones de acción de "Ampliar foto": el principal a ancho completo y los
+     de definición (HD/Ultra) juntos en una fila compacta de dos columnas. */
   .amp-actions { display: flex; flex-direction: column; gap: 10px; }
-  .amp-actions .btn { width: 100%; margin: 0; }
+  .amp-actions .btn { margin: 0; }
+  .amp-def-row { display: flex; gap: 10px; }
+  .amp-def-row .btn { flex: 1 1 0; min-width: 0; }
+  /* Variante compacta de botón (menos alto y letra un poco menor) */
+  .btn.sm { padding: 11px 12px; font-size: 14px; }
 
   /* Miniatura de imagen con info al lado (convertir/comprimir) */
   .thumb-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; margin-top: 14px; }
