@@ -547,6 +547,8 @@ let tipo = 'dos';
       q.tl.x, q.tl.y, q.br.x, q.br.y, q.bl.x, q.bl.y);
 
     if (cropEnhance === 'document') applyDocumentFilter(canvas);
+    else if (cropEnhance === 'hd' && typeof window.definirHD === 'function') window.definirHD(canvas, false);
+    else if (cropEnhance === 'ultra' && typeof window.definirHD === 'function') window.definirHD(canvas, true);
 
     // PNG sin pérdida: este recorte todavía se vuelve a dibujar sobre la hoja
     // final, así que evitamos una compresión JPEG intermedia (doble pérdida).
@@ -558,7 +560,11 @@ let tipo = 'dos';
     const inp = document.getElementById('fileInput');
     if (inp) inp.value = '';
     cerrarRecorteInterno();
-    showToast(cropEnhance === 'document' ? 'Imagen ajustada · modo documento' : 'Imagen ajustada');
+    const msg = cropEnhance === 'document' ? 'Imagen ajustada · modo documento'
+      : cropEnhance === 'hd' ? 'Imagen ajustada · máxima definición'
+      : cropEnhance === 'ultra' ? 'Imagen ajustada · ultra definición'
+      : 'Imagen ajustada';
+    showToast(msg);
   }
   window.confirmarRecorte = confirmarRecorte;
 
