@@ -60,13 +60,13 @@
   const HERRAMIENTAS = [
     { id: 'appEscaner', emoji: '📄', title: 'Escáner de Documentos',
       desc: 'Combina frente y reverso o centra un documento para imprimir.' },
-    { id: 'appOCR', emoji: '🔎', title: 'OCR de PDF', badge: 'Nuevo',
+    { id: 'appOCR', emoji: '🔎', title: 'OCR de PDF',
       desc: 'Convierte un PDF escaneado en texto seleccionable y buscable.' },
-    { id: 'appImagen', emoji: '🗜️', title: 'Convertir / Comprimir a WebP', badge: 'Nuevo',
+    { id: 'appImagen', emoji: '🗜️', title: 'Convertir / Comprimir a WebP',
       desc: 'Pasa JPG o PNG a WebP y comprime según el porcentaje.' },
-    { id: 'appFondo', emoji: '🪄', title: 'Quitar fondo', badge: 'Nuevo',
+    { id: 'appFondo', emoji: '🪄', title: 'Quitar fondo',
       desc: 'Elimina el fondo de una foto y déjala transparente.' },
-    { id: 'appColor', emoji: '🎨', title: 'Cambiar fondo de color', badge: 'Nuevo',
+    { id: 'appColor', emoji: '🎨', title: 'Cambiar fondo de color',
       desc: 'Pon fondo blanco, azul, verde o rojo detrás de la foto.' },
     { id: 'appAmpliar', emoji: '🔍', title: 'Ampliar foto', badge: 'IA',
       desc: 'Agranda la foto 2×, 3× o 4× con IA (súper resolución).' },
@@ -88,6 +88,56 @@
       grid.appendChild(card);
     });
   }
+
+  // ---------------- Menú lateral (hamburguesa) ----------------
+  // Lista TODAS las herramientas (mismo catálogo) con su flecha chevron.
+  const CHEVRON = '<svg class="menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+
+  function renderMenu() {
+    const list = $('menuList');
+    if (!list) return;
+    list.innerHTML = '';
+    // Enlace a Inicio primero.
+    const inicio = document.createElement('button');
+    inicio.type = 'button';
+    inicio.className = 'menu-item';
+    inicio.addEventListener('click', () => { volverInicio(); cerrarMenu(); });
+    inicio.innerHTML = '<span class="menu-emoji">🏠</span><span class="menu-name">Inicio</span>' + CHEVRON;
+    list.appendChild(inicio);
+
+    HERRAMIENTAS.forEach(t => {
+      if (t.soon) return;
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'menu-item';
+      item.addEventListener('click', () => { abrirHerramienta(t.id); cerrarMenu(); });
+      item.innerHTML =
+        '<span class="menu-emoji">' + t.emoji + '</span>' +
+        '<span class="menu-name">' + t.title + '</span>' +
+        (t.badge ? '<span class="menu-badge">' + t.badge + '</span>' : '') +
+        CHEVRON;
+      list.appendChild(item);
+    });
+  }
+
+  function abrirMenu() {
+    const d = $('toolsDrawer'), o = $('drawerOverlay');
+    if (d) d.classList.add('show');
+    if (o) o.classList.add('show');
+    document.body.style.overflow = 'hidden';
+  }
+  function cerrarMenu() {
+    const d = $('toolsDrawer'), o = $('drawerOverlay');
+    if (d) d.classList.remove('show');
+    if (o) o.classList.remove('show');
+    document.body.style.overflow = '';
+  }
+  window.abrirMenu = abrirMenu;
+  window.cerrarMenu = cerrarMenu;
+  window.toggleMenu = () => {
+    const d = $('toolsDrawer');
+    if (d && d.classList.contains('show')) cerrarMenu(); else abrirMenu();
+  };
 
   // ------------------------- Utilidades UI ---------------------------
   function setBar(barId, pctId, statusId, pct, status) {
@@ -1122,6 +1172,11 @@
 
   function init() {
     renderLauncher();
+    renderMenu();
+    // Cerrar el menú con la tecla Escape.
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') cerrarMenu();
+    });
     $('ocrInput').addEventListener('change', e => ocrPick(e.target.files[0]));
     $('imgInput').addEventListener('change', e => imgPick(e.target.files[0]));
     $('fondoInput').addEventListener('change', e => fondoPick(e.target.files[0]));

@@ -112,6 +112,26 @@
   </div>
 </div>
 
+<!-- Banner superior global + botón de menú hamburguesa -->
+<header class="appbar">
+  <button class="appbar-burger" type="button" onclick="toggleMenu()" aria-label="Abrir menú" title="Menú">
+    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+      <path d="M3 6h18"/><path d="M3 12h18"/><path d="M3 18h18"/>
+    </svg>
+  </button>
+  <div class="appbar-title">🧰 Caja de herramientas</div>
+</header>
+
+<!-- Menú lateral (drawer) con TODAS las herramientas -->
+<div class="drawer-overlay" id="drawerOverlay" onclick="cerrarMenu()"></div>
+<aside class="tools-drawer" id="toolsDrawer" aria-label="Menú de herramientas">
+  <div class="drawer-head">
+    <span class="drawer-title">🧰 Herramientas</span>
+    <button class="drawer-close" type="button" onclick="cerrarMenu()" aria-label="Cerrar menú" title="Cerrar">✕</button>
+  </div>
+  <div class="menu-list" id="menuList"><!-- generado por JS --></div>
+</aside>
+
 <!-- ============================================================
      ==================  MENÚ DE INICIO (PC)  ==================
      Galería de herramientas. Para añadir una nueva herramienta:
@@ -136,11 +156,6 @@
         <line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/>
       </svg>
     </button>
-  </div>
-
-  <div class="home-hero">
-    <h2>Caja de herramientas 🧰</h2>
-    <p>Escanea documentos, conviértelos a texto con OCR o edita imágenes. Todo funciona en tu propio dispositivo.</p>
   </div>
 
   <div class="section-label">Herramientas disponibles</div>
