@@ -758,13 +758,92 @@
     return c;
   }
 
-  // Ampliación rápida por pasos (x2 sucesivos con suavizado alto).
+  // Mejora rápida de calidad (SIN descargas ni GPU): realce de nitidez por
+  // máscara de enfoque (unsharp mask) usando el desenfoque acelerado del
+  // navegador, más un auto-contraste suave (estira el rango tonal) y una
+  // saturación ligera. Corre en milisegundos, incluso en fotos grandes, y
+  // hace que la foto se vea notablemente más nítida y viva al instante.
+  function mejorarCalidad(canvas, amount) {
+    const w = canvas.width, h = canvas.height;
+    if (!w || !h) return canvas;
+    amount = amount == null ? 0.6 : amount;   // fuerza del enfoque
+    const ctx = canvas.getContext('2d');
+
+    // 1) Copia desenfocada de referencia. El blur del navegador es rápido
+    //    (usa GPU cuando está disponible) → base para la máscara de enfoque.
+    let blurData = null;
+    try {
+      if ('filter' in ctx) {
+        const bc = document.createElement('canvas');
+        bc.width = w; bc.height = h;
+        const bctx = bc.getContext('2d');
+        const radius = Math.max(0.8, Math.min(2.4, Math.max(w, h) / 1400));
+        bctx.filter = 'blur(' + radius.toFixed(2) + 'px)';
+        bctx.drawImage(canvas, 0, 0);
+        blurData = bctx.getImageData(0, 0, w, h).data;
+      }
+    } catch (_) { blurData = null; }
+
+    let img;
+    try { img = ctx.getImageData(0, 0, w, h); }
+    catch (_) { return canvas; }   // lienzo "sucio" (cross-origin) → sin cambios
+    const d = img.data;
+
+    // 2) Auto-contraste: histograma de luminancia y recorte del 0.5% en cada
+    //    extremo para estirar el rango sin quemar la foto. Si la imagen es muy
+    //    plana (poco rango) se deja igual para no exagerar.
+    const hist = new Uint32Array(256);
+    for (let i = 0; i < d.length; i += 4) {
+      const l = (d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0;
+      hist[l]++;
+    }
+    const totalPx = d.length / 4;
+    const cut = totalPx * 0.005;
+    let lo = 0, hi = 255, acc = 0;
+    for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > cut) { lo = v; break; } }
+    acc = 0;
+    for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > cut) { hi = v; break; } }
+    if (hi - lo < 32) { lo = 0; hi = 255; }
+    const range = hi - lo || 1;
+    const lut = new Uint8Array(256);
+    for (let v = 0; v < 256; v++) {
+      let n = (v - lo) / range * 255;
+      lut[v] = n < 0 ? 0 : n > 255 ? 255 : n;
+    }
+    const sat = 1.08;   // saturación suave
+
+    // 3) Una sola pasada: enfoque + auto-contraste + saturación por píxel.
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i], g = d[i + 1], b = d[i + 2];
+      if (blurData) {
+        r += amount * (r - blurData[i]);
+        g += amount * (g - blurData[i + 1]);
+        b += amount * (b - blurData[i + 2]);
+      }
+      r = lut[r < 0 ? 0 : r > 255 ? 255 : r | 0];
+      g = lut[g < 0 ? 0 : g > 255 ? 255 : g | 0];
+      b = lut[b < 0 ? 0 : b > 255 ? 255 : b | 0];
+      const l = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = l + (r - l) * sat;
+      g = l + (g - l) * sat;
+      b = l + (b - l) * sat;
+      d[i]     = r < 0 ? 0 : r > 255 ? 255 : r;
+      d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+      d[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+    }
+    ctx.putImageData(img, 0, 0);
+    return canvas;
+  }
+
+  // Ampliación rápida por pasos (x2 sucesivos con suavizado alto) + mejora
+  // rápida de calidad (nitidez y contraste) para que el modo sin IA no solo
+  // agrande sino que también SE VEA mejor, al instante.
   function ampliarCanvas(img, tw, th) {
     let cur = redimensionar(img, img.naturalWidth, img.naturalHeight);
     while (cur.width < tw || cur.height < th) {
       cur = redimensionar(cur, Math.min(tw, cur.width * 2), Math.min(th, cur.height * 2));
     }
-    return cur;
+    return mejorarCalidad(cur);
   }
 
   // Ampliación con IA (super-resolución ESRGAN, modelo nativo por factor →
@@ -863,13 +942,13 @@
         } catch (e) {
           console.error(e);
           toast(e && e.message === 'sin-webgl'
-            ? 'Tu dispositivo no acelera la IA (sin GPU/WebGL); se usó el modo rápido.'
-            : 'La IA no está disponible ahora; se usó el modo rápido.');
-          setBar('ampBar', 'ampPct', 'ampStatus', 40, 'Ampliando (modo rápido)…');
+            ? 'Tu dispositivo no acelera la IA (sin GPU/WebGL); se usó el modo rápido con realce.'
+            : 'La IA no está disponible ahora; se usó el modo rápido con realce.');
+          setBar('ampBar', 'ampPct', 'ampStatus', 40, 'Ampliando y realzando…');
           canvas = ampliarCanvas(ampImgEl, tw, th);
         }
       } else {
-        setBar('ampBar', 'ampPct', 'ampStatus', 30, 'Ampliando…');
+        setBar('ampBar', 'ampPct', 'ampStatus', 30, 'Ampliando y realzando…');
         await new Promise(r => setTimeout(r, 30));
         canvas = ampliarCanvas(ampImgEl, tw, th);
       }
