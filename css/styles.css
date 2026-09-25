@@ -643,6 +643,11 @@
     border-color: #34C759;
     color: #fff;
   }
+  /* Chips de definición diferenciados por color (contorno claro sobre el
+     fondo oscuro de la barra): HD verde, Ultra violeta. */
+  .filter-btn[data-f="hd"]    { border-color: rgba(122,240,163,0.75); color: #d8ffe6; }
+  .filter-btn[data-f="ultra"] { border-color: rgba(200,182,255,0.85); color: #ece5ff; }
+  .filter-btn[data-f="ultra"].active { background: #7C5CFC; border-color: #7C5CFC; color: #fff; }
 
   /* Botón de linterna encendido */
   .cam-btn.torch-on { background: #FFC107; color: #000; }
@@ -1424,6 +1429,20 @@
   .amp-def-row .btn { flex: 1 1 0; min-width: 0; }
   /* Variante compacta de botón (menos alto y letra un poco menor) */
   .btn.sm { padding: 11px 12px; font-size: 14px; }
+
+  /* Botones de definición con color propio para diferenciarlos:
+     HD = verde · Ultra = violeta. Tinte suave + contorno claro. */
+  #ampHD.btn    { color: #0f7a37; border-color: #34C759; background: rgba(52,199,89,0.10); }
+  #ampUltra.btn { color: #5b34d6; border-color: #8B6DFF; background: rgba(124,92,252,0.10); }
+  #ampHD.btn:not([disabled]):hover    { background: rgba(52,199,89,0.18); border-color: #2bb14f; }
+  #ampUltra.btn:not([disabled]):hover { background: rgba(124,92,252,0.18); border-color: #7C5CFC; }
+
+  /* Modo oscuro: tonos y contornos CLAROS para que resalten sobre el fondo
+     negro del celular y se distingan entre sí. */
+  body.dark #ampHD.btn    { color: #86f0aa; border-color: #5AD880; background: rgba(52,199,89,0.18); }
+  body.dark #ampUltra.btn { color: #cbb9ff; border-color: #A88CFF; background: rgba(124,92,252,0.22); }
+  body.dark #ampHD.btn:not([disabled]):hover    { background: rgba(52,199,89,0.30); border-color: #86f0aa; }
+  body.dark #ampUltra.btn:not([disabled]):hover { background: rgba(124,92,252,0.34); border-color: #cbb9ff; }
 
   /* Miniatura de imagen con info al lado (convertir/comprimir) */
   .thumb-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; margin-top: 14px; }
