@@ -2145,6 +2145,17 @@
         </div>
       </div>
     </div>
+
+    <!-- Aviso cuando la foto NO tiene fondo transparente -->
+    <div id="colorBgBox" style="display:none; margin-top:14px;">
+      <p class="name-hint" style="margin:0 0 10px;">⚠️ Esta foto no tiene fondo transparente, por eso el color no se ve. Quítale el fondo para poder cambiarlo.</p>
+      <button class="btn brand full" id="colorQuitarBtn" type="button" onclick="colorQuitarFondo()">🪄 Quitar fondo y aplicar color</button>
+      <div class="bar-wrap" id="colorProgWrap" style="display:none; margin-top:12px;">
+        <div class="bar"><span id="colorBar"></span></div>
+        <div class="bar-meta"><span id="colorStatus">Preparando…</span><span class="pct" id="colorPct">0%</span></div>
+      </div>
+    </div>
+
     <p class="name-hint" style="margin:12px 2px 0;">La foto se descarga con la misma resolución y formato, y el peso queda igual o menor al original.</p>
   </div>
 
@@ -4112,6 +4123,58 @@
     colorRedraw();
   };
 
+  // ¿La imagen tiene zonas transparentes? (para saber si el color se verá)
+  function tieneTransparencia(img) {
+    const s = 80;
+    const r = Math.min(1, s / Math.max(img.naturalWidth, img.naturalHeight, 1));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * r));
+    c.height = Math.max(1, Math.round(img.naturalHeight * r));
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    try {
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < d.length; i += 4) if (d[i] < 250) return true;
+    } catch (_) { return true; }
+    return false;
+  }
+
+  // Quita el fondo con IA para poder aplicar el color (fotos opacas).
+  window.colorQuitarFondo = async function () {
+    if (!colorFile) return;
+    const btn = $('colorQuitarBtn'); btn.disabled = true; $('colorProgWrap').style.display = '';
+    try {
+      setBar('colorBar', 'colorPct', 'colorStatus', 4, 'Cargando modelo de IA…');
+      const mod = await import(CDN.imgly);
+      const removeBackground = mod.removeBackground || mod.default;
+      if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
+      const pngBlob = await removeBackground(colorFile, {
+        output: { format: 'image/png' },
+        progress: (key, cur, tot) => {
+          const pct = tot ? 6 + (cur / tot) * 82 : 45;
+          setBar('colorBar', 'colorPct', 'colorStatus', pct,
+            /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
+        }
+      });
+      setBar('colorBar', 'colorPct', 'colorStatus', 100, '¡Listo!');
+      const u = URL.createObjectURL(pngBlob);
+      const im = new Image();
+      im.onload = () => {
+        URL.revokeObjectURL(u);
+        colorImgEl = im;                 // ahora el sujeto está recortado (con transparencia)
+        hide('colorBgBox');
+        colorRedraw();                   // aplica el color elegido detrás
+      };
+      im.onerror = () => { URL.revokeObjectURL(u); toast('No se pudo procesar la imagen.'); btn.disabled = false; };
+      im.src = u;
+    } catch (e) {
+      console.error(e);
+      setBar('colorBar', 'colorPct', 'colorStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló el proceso'));
+      btn.disabled = false;
+    }
+  };
+
   function colorPick(file) {
     if (!file) return;
     if (!/^image\//.test(file.type) && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
@@ -4132,6 +4195,10 @@
       URL.revokeObjectURL(u);
       colorImgEl = img;
       hide('colorDrop'); $('colorThumbRow').style.display = 'flex';
+      // Si la foto es opaca (sin transparencia), el color no se verá:
+      // ofrecemos quitar el fondo automáticamente.
+      const btn = $('colorQuitarBtn'); btn.disabled = false; $('colorProgWrap').style.display = 'none';
+      $('colorBgBox').style.display = tieneTransparencia(img) ? 'none' : '';
       colorRedraw();
     };
     img.onerror = () => { URL.revokeObjectURL(u); toast('No se pudo leer la imagen.'); };
@@ -4141,6 +4208,7 @@
   window.colorReset = () => {
     colorFile = null; colorImgEl = null; $('colorInput').value = '';
     show('colorDrop'); $('colorThumbRow').style.display = 'none';
+    hide('colorBgBox');
   };
 
   async function colorRedraw() {
