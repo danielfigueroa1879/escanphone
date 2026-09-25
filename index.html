@@ -732,6 +732,15 @@
           <span class="track"></span>
         </label>
       </div>
+      <div class="field-row" id="ampCalidadRow">
+        <div class="fr-label">Calidad de la IA
+          <small>Media = más rápida · Alta = más detalle (más lenta)</small>
+        </div>
+        <div class="seg" id="ampCalidadSeg">
+          <button type="button" class="active" data-q="medium" onclick="ampSetCalidad(this,'medium')">Media</button>
+          <button type="button" data-q="thick" onclick="ampSetCalidad(this,'thick')">Alta</button>
+        </div>
+      </div>
       <div class="field-row">
         <div class="fr-label">Ampliación
           <small>Cuánto se agranda la foto</small>

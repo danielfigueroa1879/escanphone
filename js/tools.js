@@ -14,9 +14,12 @@
     pdflib: 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js',
     imgly:  'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm',
     tfjs:   'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js',
-    // Modelos ESRGAN "medium" nativos por escala (x2/x3/x4): mejor calidad
-    // y una sola pasada por factor. Global: ESRGANMedium{N}x
-    upMediaBase: 'https://cdn.jsdelivr.net/npm/@upscalerjs/esrgan-medium@1.0.0/dist/umd/models/esrgan-medium/src/',
+    // Modelos ESRGAN nativos por escala (x2/x3/x4): una sola pasada por
+    // factor. "medium" = calidad media/rápida; "thick" = máxima calidad.
+    upBases: {
+      medium: { url: 'https://cdn.jsdelivr.net/npm/@upscalerjs/esrgan-medium@1.0.0/dist/umd/models/esrgan-medium/src/', g: 'ESRGANMedium' },
+      thick:  { url: 'https://cdn.jsdelivr.net/npm/@upscalerjs/esrgan-thick@1.0.0/dist/umd/models/esrgan-thick/src/',  g: 'ESRGANThick' }
+    },
     upscaler:'https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js'
   };
   const _scripts = {};
@@ -672,7 +675,12 @@
   // =========================  AMPLIAR FOTO  ========================
   // ==================================================================
   let ampFile = null, ampImgEl = null, ampFactor = 2, ampMime = 'image/png',
-      ampBusy = false, ampUrl = null, ampSrcUrl = null;
+      ampBusy = false, ampUrl = null, ampSrcUrl = null, ampCalidad = 'medium';
+
+  window.ampSetCalidad = (btn, q) => {
+    ampCalidad = q; segActivate('ampCalidadSeg', btn);
+    if (ampImgEl) ampActualizarAviso();
+  };
   const AMP_MAX = 8000;   // límite de seguridad para el lado mayor de SALIDA (px)
   const AMP_MAX_IN = 2000; // tope del lado mayor de ENTRADA para la IA (px)
 
@@ -681,13 +689,16 @@
     if (ampImgEl) { ampActualizarNuevo(); ampActualizarAviso(); }
   };
 
-  // Muestra el aviso cuando la IA puede tardar (foto grande o factor alto).
+  // Muestra el aviso cuando la IA puede tardar (foto grande, factor alto o
+  // calidad alta) y muestra/oculta el selector de calidad según la IA.
   function ampActualizarAviso() {
-    const el = $('ampAviso'); if (!el) return;
     const ia = $('ampIAToggle') && $('ampIAToggle').checked;
+    const fila = $('ampCalidadRow'); if (fila) fila.style.display = ia ? '' : 'none';
+    const el = $('ampAviso'); if (!el) return;
     if (!ampImgEl || !ia) { el.style.display = 'none'; return; }
     const side = Math.max(ampImgEl.naturalWidth, ampImgEl.naturalHeight);
-    el.style.display = (side > 1500 || (side > 1000 && ampFactor >= 4)) ? '' : 'none';
+    const alta = ampCalidad === 'thick';
+    el.style.display = (side > 1500 || (side > 1000 && ampFactor >= 4) || (alta && side > 900)) ? '' : 'none';
   }
 
   function ampActualizarNuevo() {
@@ -770,9 +781,10 @@
       }
     } catch (_) {}
     const esc = Math.max(2, Math.min(4, Math.round(factor))); // modelo nativo x2/x3/x4
-    await cargarScript(CDN.upMediaBase + 'x' + esc + '/index.min.js');
+    const modelo = CDN.upBases[ampCalidad] || CDN.upBases.medium;
+    await cargarScript(modelo.url + 'x' + esc + '/index.min.js');
     await cargarScript(CDN.upscaler);
-    const Model = window['ESRGANMedium' + esc + 'x'];
+    const Model = window[modelo.g + esc + 'x'];
     if (!window.Upscaler || !Model) throw new Error('IA no disponible');
 
     // Tope de entrada: si la foto es enorme, se reduce antes de la IA para
