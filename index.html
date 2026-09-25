@@ -1471,6 +1471,17 @@
   .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
   .btn.full { flex-basis: 100%; }
 
+  /* Comparación de tamaños (convertir/comprimir) */
+  .size-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
+  .size-box {
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 8px; text-align: center;
+  }
+  .size-box .size-lbl { display: block; font-size: 11px; color: var(--ink-mute); margin-bottom: 3px; }
+  .size-box .size-val { display: block; font-size: 15px; font-weight: 700; }
+  .size-box .size-val.brandtxt { color: var(--brand); }
+  body.dark .size-box { background: var(--surface-2); border-color: var(--line); }
+
   body.dark .tool-card .tc-emoji { background: var(--surface-2); }
   body.dark .drop-zone .dz-file { background: var(--surface-2); }
   body.dark .checker { background-color: #23232a; background-image:
@@ -1879,10 +1890,10 @@
     <button class="icon-btn back" type="button" onclick="volverInicio()" aria-label="Volver" title="Volver">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
     </button>
-    <div class="tool-ico">🪄</div>
+    <div class="tool-ico">🗜️</div>
     <div class="tool-txt">
-      <h1>Quitar fondo / WebP</h1>
-      <p class="subtitle">Elimina el fondo de una foto y conviértela a WebP, PNG o JPG.</p>
+      <h1>Convertir / Comprimir a WebP</h1>
+      <p class="subtitle">Pasa JPG o PNG a WebP y comprime según el porcentaje que elijas.</p>
     </div>
     <button class="icon-btn" type="button" onclick="cambiarTema()" aria-label="Cambiar tema" title="Tema">🌓</button>
   </div>
@@ -1891,7 +1902,7 @@
     <input type="file" id="imgInput" accept="image/png,image/jpeg,image/webp,image/*" style="display:none;">
     <div class="drop-zone" id="imgDrop" onclick="document.getElementById('imgInput').click()">
       <div class="dz-emoji">🖼️</div>
-      <div class="dz-title">Sube tu foto</div>
+      <div class="dz-title">Sube tu imagen</div>
       <div class="dz-sub">Toca aquí o arrastra una imagen PNG, JPG o WebP</div>
       <div class="dz-file" id="imgFileName" style="display:none;"></div>
     </div>
@@ -1902,34 +1913,25 @@
 
     <div style="margin-top:14px;">
       <div class="field-row">
-        <div class="fr-label">Quitar fondo
-          <small>Deja el sujeto con fondo transparente</small>
-        </div>
-        <label class="switch">
-          <input type="checkbox" id="imgBgToggle" checked>
-          <span class="track"></span>
-        </label>
-      </div>
-      <div class="field-row">
         <div class="fr-label">Formato de salida
-          <small>WebP pesa menos; PNG conserva transparencia</small>
+          <small>WebP pesa menos; JPG universal; PNG sin pérdida</small>
         </div>
         <div class="seg" id="imgFmtSeg">
           <button type="button" class="active" data-fmt="webp" onclick="imgSetFmt(this,'webp')">WebP</button>
-          <button type="button" data-fmt="png" onclick="imgSetFmt(this,'png')">PNG</button>
           <button type="button" data-fmt="jpeg" onclick="imgSetFmt(this,'jpeg')">JPG</button>
+          <button type="button" data-fmt="png" onclick="imgSetFmt(this,'png')">PNG</button>
         </div>
       </div>
       <div class="field-row" id="imgQualityRow">
-        <div class="fr-label">Calidad
-          <small><span id="imgQualityVal">90</span>% — menor = archivo más liviano</small>
+        <div class="fr-label">Nivel de compresión
+          <small>Calidad <span id="imgQualityVal">80</span>% — menor % = más compresión y archivo más liviano</small>
         </div>
-        <input type="range" id="imgQuality" min="40" max="100" value="90"
+        <input type="range" id="imgQuality" min="20" max="100" value="80"
                oninput="document.getElementById('imgQualityVal').textContent=this.value" style="flex:1; max-width:180px;">
       </div>
     </div>
 
-    <button class="btn brand full" id="imgRun" style="margin-top:14px;" onclick="imgProcesar()" disabled>✨ Procesar imagen</button>
+    <button class="btn brand full" id="imgRun" style="margin-top:14px;" onclick="imgProcesar()" disabled>🗜️ Convertir / Comprimir</button>
   </div>
 
   <!-- Progreso -->
@@ -1941,19 +1943,96 @@
         <span class="pct" id="imgPct">0%</span>
       </div>
     </div>
-    <p class="name-hint" style="margin:10px 0 0;" id="imgHint"></p>
   </div>
 
   <!-- Resultado -->
   <div class="card" id="imgResultCard" style="display:none;">
     <h2>Resultado</h2>
     <div class="checker" style="margin-bottom:12px;"><img id="imgResultPreview" alt="Resultado"></div>
-    <div class="bar-meta" style="margin:0 0 10px;">
-      <span id="imgSizeInfo"></span>
+    <div class="size-grid">
+      <div class="size-box"><span class="size-lbl">Tamaño original</span><span class="size-val" id="imgSizeOrig">—</span></div>
+      <div class="size-box"><span class="size-lbl">Tamaño nuevo</span><span class="size-val brandtxt" id="imgSizeNew">—</span></div>
+      <div class="size-box"><span class="size-lbl">Ahorro</span><span class="size-val" id="imgSizeSaved">—</span></div>
     </div>
     <div class="tool-actions">
       <a class="btn primary" id="imgDownload" download="imagen.webp" href="#">⬇ Descargar</a>
       <button class="btn" type="button" onclick="imgReset()">↺ Otra imagen</button>
+    </div>
+  </div>
+
+  <footer class="footer">
+    © 2026 Todos los derechos reservados.<br>
+    Plataforma desarrollada por <span class="autor">Daniel Figueroa Chacama</span>.<br>
+    <span class="rol">Ingeniero en Informática &amp; Ciberseguridad</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     ==============  HERRAMIENTA: QUITAR FONDO  ================
+     ============================================================ -->
+<div class="container view" id="appFondo">
+  <div class="tool-head">
+    <button class="icon-btn back" type="button" onclick="volverInicio()" aria-label="Volver" title="Volver">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="tool-ico">🪄</div>
+    <div class="tool-txt">
+      <h1>Quitar fondo</h1>
+      <p class="subtitle">Elimina el fondo de una foto y descárgala con fondo transparente.</p>
+    </div>
+    <button class="icon-btn" type="button" onclick="cambiarTema()" aria-label="Cambiar tema" title="Tema">🌓</button>
+  </div>
+
+  <div class="card">
+    <input type="file" id="fondoInput" accept="image/png,image/jpeg,image/webp,image/*" style="display:none;">
+    <div class="drop-zone" id="fondoDrop" onclick="document.getElementById('fondoInput').click()">
+      <div class="dz-emoji">🪄</div>
+      <div class="dz-title">Sube tu foto</div>
+      <div class="dz-sub">Toca aquí o arrastra una imagen PNG, JPG o WebP</div>
+      <div class="dz-file" id="fondoFileName" style="display:none;"></div>
+    </div>
+
+    <div id="fondoPreviewWrap" class="checker" style="display:none; margin-top:14px;">
+      <img id="fondoPreview" alt="Vista previa">
+    </div>
+
+    <div style="margin-top:14px;">
+      <div class="field-row">
+        <div class="fr-label">Formato de salida
+          <small>PNG conserva la transparencia; WebP pesa menos</small>
+        </div>
+        <div class="seg" id="fondoFmtSeg">
+          <button type="button" class="active" data-fmt="png" onclick="fondoSetFmt(this,'png')">PNG</button>
+          <button type="button" data-fmt="webp" onclick="fondoSetFmt(this,'webp')">WebP</button>
+        </div>
+      </div>
+    </div>
+
+    <button class="btn brand full" id="fondoRun" style="margin-top:14px;" onclick="fondoProcesar()" disabled>🪄 Quitar fondo</button>
+  </div>
+
+  <!-- Progreso -->
+  <div class="card" id="fondoProgressCard" style="display:none;">
+    <div class="bar-wrap">
+      <div class="bar"><span id="fondoBar"></span></div>
+      <div class="bar-meta">
+        <span id="fondoStatus">Preparando…</span>
+        <span class="pct" id="fondoPct">0%</span>
+      </div>
+    </div>
+    <p class="name-hint" style="margin:10px 0 0;" id="fondoHint"></p>
+  </div>
+
+  <!-- Resultado -->
+  <div class="card" id="fondoResultCard" style="display:none;">
+    <h2>Resultado</h2>
+    <div class="checker" style="margin-bottom:12px;"><img id="fondoResultPreview" alt="Resultado"></div>
+    <div class="bar-meta" style="margin:0 0 10px;">
+      <span id="fondoSizeInfo"></span>
+    </div>
+    <div class="tool-actions">
+      <a class="btn primary" id="fondoDownload" download="sin-fondo.png" href="#">⬇ Descargar</a>
+      <button class="btn" type="button" onclick="fondoReset()">↺ Otra imagen</button>
     </div>
   </div>
 
@@ -3478,8 +3557,10 @@
       desc: 'Combina frente y reverso o centra un documento para imprimir.' },
     { id: 'appOCR', emoji: '🔎', title: 'OCR de PDF', badge: 'Nuevo',
       desc: 'Convierte un PDF escaneado en texto seleccionable y buscable.' },
-    { id: 'appImagen', emoji: '🪄', title: 'Quitar fondo / WebP', badge: 'Nuevo',
-      desc: 'Elimina el fondo de una foto y conviértela a WebP, PNG o JPG.' },
+    { id: 'appImagen', emoji: '🗜️', title: 'Convertir / Comprimir a WebP', badge: 'Nuevo',
+      desc: 'Pasa JPG o PNG a WebP y comprime según el porcentaje.' },
+    { id: 'appFondo', emoji: '🪄', title: 'Quitar fondo', badge: 'Nuevo',
+      desc: 'Elimina el fondo de una foto y déjala transparente.' },
     { soon: true, emoji: '➕', title: 'Más herramientas', desc: 'Se irán agregando pronto.' }
   ];
   function renderLauncher() {
@@ -3724,8 +3805,40 @@
     }
   };
 
+  // Tamaño legible (KB / MB)
+  function kb(bytes) {
+    return bytes >= 1048576 ? (bytes / 1048576).toFixed(2) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+  }
+
+  // Convierte/recomprime un blob de imagen al formato pedido.
+  // quality: 0–1 (si es null se lee el control deslizante de compresión).
+  function convertir(srcBlob, fmt, quality) {
+    return new Promise((res, rej) => {
+      const img = new Image(); const u = URL.createObjectURL(srcBlob);
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const ctx = c.getContext('2d');
+        const mime = fmt === 'png' ? 'image/png' : fmt === 'jpeg' ? 'image/jpeg' : 'image/webp';
+        if (mime === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(u);
+        const q = quality != null ? quality : (+$('imgQuality').value) / 100;
+        const done = (b, usedFmt) => b ? res({ blob: b, fmt: usedFmt }) : rej(new Error('No se pudo convertir la imagen.'));
+        c.toBlob(b => {
+          if (!b && mime === 'image/webp') { // Safari antiguo sin WebP → PNG
+            toast('Tu navegador no exporta WebP; se usó PNG.');
+            c.toBlob(b2 => done(b2, 'png'), 'image/png');
+          } else done(b, fmt);
+        }, mime, q);
+      };
+      img.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer la imagen.')); };
+      img.src = u;
+    });
+  }
+
   // ==================================================================
-  // ================  QUITAR FONDO / CONVERTIR A WEBP  ===============
+  // ==============  CONVERTIR / COMPRIMIR A WEBP  ====================
   // ==================================================================
   let imgFmt = 'webp', imgFile = null, imgBusy = false, imgUrl = null, imgSrcUrl = null;
 
@@ -3741,7 +3854,7 @@
       toast('Elige una imagen (PNG, JPG o WebP)'); return;
     }
     imgFile = file;
-    const fn = $('imgFileName'); fn.textContent = '📎 ' + file.name; fn.style.display = 'inline-block';
+    const fn = $('imgFileName'); fn.textContent = '📎 ' + file.name + ' · ' + kb(file.size); fn.style.display = 'inline-block';
     if (imgSrcUrl) URL.revokeObjectURL(imgSrcUrl);
     imgSrcUrl = URL.createObjectURL(file);
     $('imgPreview').src = imgSrcUrl; $('imgPreviewWrap').style.display = 'flex';
@@ -3754,63 +3867,23 @@
     $('imgRun').disabled = true; hide('imgProgressCard'); hide('imgResultCard');
   };
 
-  function convertir(srcBlob, fmt) {
-    return new Promise((res, rej) => {
-      const img = new Image(); const u = URL.createObjectURL(srcBlob);
-      img.onload = () => {
-        const c = document.createElement('canvas');
-        c.width = img.naturalWidth; c.height = img.naturalHeight;
-        const ctx = c.getContext('2d');
-        let mime = fmt === 'png' ? 'image/png' : fmt === 'jpeg' ? 'image/jpeg' : 'image/webp';
-        if (mime === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
-        ctx.drawImage(img, 0, 0);
-        URL.revokeObjectURL(u);
-        const q = (+$('imgQuality').value) / 100;
-        const done = (b, usedFmt) => b ? res({ blob: b, fmt: usedFmt }) : rej(new Error('No se pudo convertir la imagen.'));
-        c.toBlob(b => {
-          if (!b && mime === 'image/webp') { // Safari antiguo sin WebP → PNG
-            toast('Tu navegador no exporta WebP; se usó PNG.');
-            c.toBlob(b2 => done(b2, 'png'), 'image/png');
-          } else done(b, fmt);
-        }, mime, q);
-      };
-      img.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer la imagen.')); };
-      img.src = u;
-    });
-  }
-
   window.imgProcesar = async function () {
     if (imgBusy || !imgFile) return;
     imgBusy = true; $('imgRun').disabled = true;
-    show('imgProgressCard'); hide('imgResultCard'); $('imgHint').textContent = '';
-    const quitarFondo = $('imgBgToggle').checked;
+    show('imgProgressCard'); hide('imgResultCard');
+    setBar('imgBar', 'imgPct', 'imgStatus', 25, 'Procesando imagen…');
     try {
-      let sourceBlob = imgFile;
-      if (quitarFondo) {
-        setBar('imgBar', 'imgPct', 'imgStatus', 4, 'Cargando modelo de IA…');
-        $('imgHint').textContent = 'La primera vez se descarga el modelo (~40 MB). Puede tardar según tu conexión.';
-        const mod = await import(CDN.imgly);
-        const removeBackground = mod.removeBackground || mod.default;
-        if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
-        sourceBlob = await removeBackground(imgFile, {
-          output: { format: 'image/png' },
-          progress: (key, cur, tot) => {
-            const pct = tot ? 6 + (cur / tot) * 78 : 40;
-            setBar('imgBar', 'imgPct', 'imgStatus', pct,
-              /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
-          }
-        });
-        $('imgHint').textContent = '';
-      }
-      setBar('imgBar', 'imgPct', 'imgStatus', 88, 'Convirtiendo…');
-      const { blob, fmt } = await convertir(sourceBlob, imgFmt);
-
+      const { blob, fmt } = await convertir(imgFile, imgFmt);
+      setBar('imgBar', 'imgPct', 'imgStatus', 90, 'Generando archivo…');
       if (imgUrl) URL.revokeObjectURL(imgUrl);
       imgUrl = URL.createObjectURL(blob);
       $('imgResultPreview').src = imgUrl;
       const ext = fmt === 'jpeg' ? 'jpg' : fmt;
       const dl = $('imgDownload'); dl.href = imgUrl; dl.download = baseName(imgFile.name) + '.' + ext;
-      $('imgSizeInfo').textContent = fmt.toUpperCase() + ' · ' + Math.max(1, Math.round(blob.size / 1024)) + ' KB';
+      const saved = Math.round((1 - blob.size / imgFile.size) * 100);
+      $('imgSizeOrig').textContent = kb(imgFile.size);
+      $('imgSizeNew').textContent = kb(blob.size);
+      $('imgSizeSaved').textContent = saved > 0 ? '−' + saved + '%' : (saved < 0 ? '+' + Math.abs(saved) + '%' : '0%');
       setBar('imgBar', 'imgPct', 'imgStatus', 100, '¡Listo! Descarga tu imagen.');
       show('imgResultCard');
     } catch (e) {
@@ -3820,6 +3893,74 @@
       $('imgRun').disabled = false;
     } finally {
       imgBusy = false;
+    }
+  };
+
+  // ==================================================================
+  // =========================  QUITAR FONDO  ========================
+  // ==================================================================
+  let fondoFmt = 'png', fondoFile = null, fondoBusy = false, fondoUrl = null, fondoSrcUrl = null;
+
+  window.fondoSetFmt = (btn, f) => {
+    fondoFmt = f; segActivate('fondoFmtSeg', btn);
+    const dl = $('fondoDownload'); if (dl && fondoFile) dl.download = baseName(fondoFile.name) + '-sin-fondo.' + f;
+  };
+
+  function fondoPick(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type) && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      toast('Elige una imagen (PNG, JPG o WebP)'); return;
+    }
+    fondoFile = file;
+    const fn = $('fondoFileName'); fn.textContent = '📎 ' + file.name; fn.style.display = 'inline-block';
+    if (fondoSrcUrl) URL.revokeObjectURL(fondoSrcUrl);
+    fondoSrcUrl = URL.createObjectURL(file);
+    $('fondoPreview').src = fondoSrcUrl; $('fondoPreviewWrap').style.display = 'flex';
+    $('fondoRun').disabled = false;
+    hide('fondoProgressCard'); hide('fondoResultCard');
+  }
+  window.fondoReset = () => {
+    fondoFile = null; $('fondoInput').value = '';
+    $('fondoFileName').style.display = 'none'; $('fondoPreviewWrap').style.display = 'none';
+    $('fondoRun').disabled = true; hide('fondoProgressCard'); hide('fondoResultCard');
+  };
+
+  window.fondoProcesar = async function () {
+    if (fondoBusy || !fondoFile) return;
+    fondoBusy = true; $('fondoRun').disabled = true;
+    show('fondoProgressCard'); hide('fondoResultCard'); $('fondoHint').textContent = '';
+    try {
+      setBar('fondoBar', 'fondoPct', 'fondoStatus', 4, 'Cargando modelo de IA…');
+      $('fondoHint').textContent = 'La primera vez se descarga el modelo (~40 MB). Puede tardar según tu conexión.';
+      const mod = await import(CDN.imgly);
+      const removeBackground = mod.removeBackground || mod.default;
+      if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
+      const pngBlob = await removeBackground(fondoFile, {
+        output: { format: 'image/png' },
+        progress: (key, cur, tot) => {
+          const pct = tot ? 6 + (cur / tot) * 80 : 45;
+          setBar('fondoBar', 'fondoPct', 'fondoStatus', pct,
+            /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
+        }
+      });
+      $('fondoHint').textContent = '';
+      setBar('fondoBar', 'fondoPct', 'fondoStatus', 90, 'Generando archivo…');
+      let outBlob = pngBlob, ext = 'png';
+      if (fondoFmt === 'webp') { const r = await convertir(pngBlob, 'webp', 0.92); outBlob = r.blob; ext = r.fmt === 'jpeg' ? 'jpg' : r.fmt; }
+      if (fondoUrl) URL.revokeObjectURL(fondoUrl);
+      fondoUrl = URL.createObjectURL(outBlob);
+      $('fondoResultPreview').src = fondoUrl;
+      const dl = $('fondoDownload'); dl.href = fondoUrl; dl.download = baseName(fondoFile.name) + '-sin-fondo.' + ext;
+      $('fondoSizeInfo').textContent = ext.toUpperCase() + ' · ' + kb(outBlob.size);
+      setBar('fondoBar', 'fondoPct', 'fondoStatus', 100, '¡Listo! Descarga tu imagen.');
+      show('fondoResultCard');
+    } catch (e) {
+      console.error(e);
+      setBar('fondoBar', 'fondoPct', 'fondoStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló el proceso'));
+      $('fondoRun').disabled = false;
+    } finally {
+      fondoBusy = false;
     }
   };
 
@@ -3835,8 +3976,10 @@
     renderLauncher();
     $('ocrInput').addEventListener('change', e => ocrPick(e.target.files[0]));
     $('imgInput').addEventListener('change', e => imgPick(e.target.files[0]));
+    $('fondoInput').addEventListener('change', e => fondoPick(e.target.files[0]));
     wireDrop('ocrDrop', ocrPick);
     wireDrop('imgDrop', imgPick);
+    wireDrop('fondoDrop', fondoPick);
     // Estado inicial del historial para el botón "atrás".
     try { history.replaceState({ view: 'homeLauncher' }, ''); } catch (_) {}
   }
