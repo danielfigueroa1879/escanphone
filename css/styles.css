@@ -580,6 +580,42 @@
   }
   #cropHandles .crop-handle:active { cursor: grabbing; }
 
+  /* Lupa de precisión: muestra un acercamiento del borde bajo el dedo */
+  .crop-magnifier {
+    position: absolute;
+    width: 132px;
+    height: 132px;
+    border-radius: 50%;
+    border: 3px solid #34C759;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.55);
+    background-color: #000;
+    background-repeat: no-repeat;
+    pointer-events: none;
+    display: none;
+    z-index: 8;
+    overflow: hidden;
+  }
+  .crop-magnifier.show { display: block; }
+  /* Cruz central para apuntar exactamente a la esquina */
+  .crop-magnifier::before,
+  .crop-magnifier::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    background: rgba(52,199,89,0.95);
+  }
+  .crop-magnifier::before {
+    width: 1.5px;
+    height: 24px;
+    transform: translate(-50%, -50%);
+  }
+  .crop-magnifier::after {
+    width: 24px;
+    height: 1.5px;
+    transform: translate(-50%, -50%);
+  }
+
   /* Barra de filtro (Natural / Documento) */
   .filter-bar {
     display: flex;
