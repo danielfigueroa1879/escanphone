@@ -457,6 +457,16 @@ let tipo = 'dos';
     const contrast = 1.15;
     const sat = 1.06;
 
+    // 3) Curva gamma de oscurecimiento (LUT): marca un poco más la tinta sin
+    //    tocar el blanco. El blanco (255) y el negro (0) quedan fijos; sólo se
+    //    oscurecen los tonos intermedios donde vive la letra. Subir GAMMA marca
+    //    más la letra; 1.2 = un oscurecimiento sutil.
+    const GAMMA = 1.2;
+    const lut = new Uint8Array(256);
+    for (let v = 0; v < 256; v++) {
+      lut[v] = Math.round(255 * Math.pow(v / 255, GAMMA));
+    }
+
     for (let i = 0; i < d.length; i += 4) {
       let r = d[i]   * gR;
       let g = d[i+1] * gG;
@@ -470,9 +480,13 @@ let tipo = 'dos';
       r = l + (r - l) * sat;
       g = l + (g - l) * sat;
       b = l + (b - l) * sat;
-      d[i]   = r < 0 ? 0 : r > 255 ? 255 : r;
-      d[i+1] = g < 0 ? 0 : g > 255 ? 255 : g;
-      d[i+2] = b < 0 ? 0 : b > 255 ? 255 : b;
+      // Clamp a entero [0,255] y pasada por la LUT gamma.
+      r = r < 0 ? 0 : r > 255 ? 255 : r;
+      g = g < 0 ? 0 : g > 255 ? 255 : g;
+      b = b < 0 ? 0 : b > 255 ? 255 : b;
+      d[i]   = lut[r | 0];
+      d[i+1] = lut[g | 0];
+      d[i+2] = lut[b | 0];
     }
     ctx.putImageData(imgData, 0, 0);
   }
