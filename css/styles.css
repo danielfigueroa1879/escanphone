@@ -1416,6 +1416,10 @@
   .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
   .btn.full { flex-basis: 100%; }
 
+  /* Botones de acción apilados a ancho completo e idéntico (Ampliar foto) */
+  .amp-actions { display: flex; flex-direction: column; gap: 10px; }
+  .amp-actions .btn { width: 100%; margin: 0; }
+
   /* Miniatura de imagen con info al lado (convertir/comprimir) */
   .thumb-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; margin-top: 14px; }
   .thumb-card {
