@@ -1493,6 +1493,23 @@
   .thumb-new b { color: var(--brand); font-size: 15px; }
   .thumb-saved { display: inline-block; margin-left: 4px; font-size: 12px; font-weight: 700; color: var(--green); }
   .thumb-dl { margin-top: auto; }
+  .thumb-img canvas { max-width: 100%; max-height: 150px; display: block; }
+
+  /* Chips de color de fondo */
+  .color-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+  .color-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 1.5px solid var(--line); background: var(--surface); color: var(--ink);
+    font-family: inherit; font-size: 13px; font-weight: 600;
+    padding: 8px 12px; border-radius: 999px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent; transition: border-color .15s, transform .05s;
+  }
+  .color-chip .sw { width: 16px; height: 16px; border-radius: 50%; background: var(--sw); border: 1px solid rgba(0,0,0,0.2); flex-shrink: 0; }
+  .color-chip:hover { border-color: var(--ink-soft); }
+  .color-chip:active { transform: scale(0.97); }
+  .color-chip.active { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink) inset; }
+  body.dark .color-chip { background: var(--surface-2); border-color: var(--line); }
+  body.dark .color-chip.active { border-color: var(--ink); box-shadow: 0 0 0 2px var(--ink) inset; }
   .thumb-add {
     width: 150px; min-height: 120px; border: 2px dashed var(--line-strong);
     border-radius: 14px; background: var(--surface-2); color: var(--ink-mute);
@@ -2063,6 +2080,72 @@
       <a class="btn primary" id="fondoDownload" download="sin-fondo.png" href="#">⬇ Descargar</a>
       <button class="btn" type="button" onclick="fondoReset()">↺ Otra imagen</button>
     </div>
+  </div>
+
+  <footer class="footer">
+    © 2026 Todos los derechos reservados.<br>
+    Plataforma desarrollada por <span class="autor">Daniel Figueroa Chacama</span>.<br>
+    <span class="rol">Ingeniero en Informática &amp; Ciberseguridad</span>
+  </footer>
+</div>
+
+<!-- ============================================================
+     ===========  HERRAMIENTA: CAMBIAR FONDO DE COLOR  =========
+     ============================================================ -->
+<div class="container view" id="appColor">
+  <div class="tool-head">
+    <button class="icon-btn back" type="button" onclick="volverInicio()" aria-label="Volver" title="Volver">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="tool-ico">🎨</div>
+    <div class="tool-txt">
+      <h1>Cambiar fondo de color</h1>
+      <p class="subtitle">Pon un fondo blanco, azul, verde o rojo detrás de tu foto.</p>
+    </div>
+    <button class="icon-btn" type="button" onclick="cambiarTema()" aria-label="Cambiar tema" title="Tema">🌓</button>
+  </div>
+
+  <div class="card">
+    <input type="file" id="colorInput" accept="image/png,image/jpeg,image/webp,image/*" style="display:none;">
+    <div class="drop-zone" id="colorDrop" onclick="document.getElementById('colorInput').click()">
+      <div class="dz-emoji">🎨</div>
+      <div class="dz-title">Sube tu foto</div>
+      <div class="dz-sub">Recomendado: una imagen PNG con fondo transparente (ej. la de “Quitar fondo”)</div>
+    </div>
+
+    <!-- Miniatura en vivo -->
+    <div class="thumb-row" id="colorThumbRow" style="display:none;">
+      <div class="thumb-card">
+        <div class="thumb-top">
+          <span class="thumb-name" id="colorName">imagen</span>
+          <span class="thumb-size" id="colorOrigSize">—</span>
+          <button class="thumb-x" type="button" onclick="colorReset()" title="Quitar">✕</button>
+        </div>
+        <div class="checker thumb-img"><canvas id="colorCanvas"></canvas></div>
+        <div class="thumb-new" id="colorSizeWrap">Tamaño: <b id="colorNewSize">—</b></div>
+        <a class="btn primary thumb-dl" id="colorDownload" download="foto-fondo.png" href="#" style="display:none;">⬇ Descargar</a>
+      </div>
+      <button type="button" class="thumb-add" title="Cambiar imagen"
+              onclick="colorReset(); document.getElementById('colorInput').click();">
+        <span class="thumb-add-ico">＋</span>
+        <span>Otra imagen</span>
+      </button>
+    </div>
+
+    <div style="margin-top:14px;">
+      <div class="field-row">
+        <div class="fr-label">Color de fondo
+          <small>Elige el color detrás de la foto</small>
+        </div>
+        <div class="color-chips" id="colorChips">
+          <button type="button" class="color-chip active" data-c="#ffffff" style="--sw:#ffffff" onclick="colorSet(this,'#ffffff')"><span class="sw"></span>Blanco</button>
+          <button type="button" class="color-chip" data-c="#2563eb" style="--sw:#2563eb" onclick="colorSet(this,'#2563eb')"><span class="sw"></span>Azul</button>
+          <button type="button" class="color-chip" data-c="#16a34a" style="--sw:#16a34a" onclick="colorSet(this,'#16a34a')"><span class="sw"></span>Verde</button>
+          <button type="button" class="color-chip" data-c="#dc2626" style="--sw:#dc2626" onclick="colorSet(this,'#dc2626')"><span class="sw"></span>Rojo</button>
+        </div>
+      </div>
+    </div>
+    <p class="name-hint" style="margin:12px 2px 0;">La foto se descarga con la misma resolución y formato, y el peso queda igual o menor al original.</p>
   </div>
 
   <footer class="footer">
@@ -3590,6 +3673,8 @@
       desc: 'Pasa JPG o PNG a WebP y comprime según el porcentaje.' },
     { id: 'appFondo', emoji: '🪄', title: 'Quitar fondo', badge: 'Nuevo',
       desc: 'Elimina el fondo de una foto y déjala transparente.' },
+    { id: 'appColor', emoji: '🎨', title: 'Cambiar fondo de color', badge: 'Nuevo',
+      desc: 'Pon fondo blanco, azul, verde o rojo detrás de la foto.' },
     { soon: true, emoji: '➕', title: 'Más herramientas', desc: 'Se irán agregando pronto.' }
   ];
   function renderLauncher() {
@@ -3994,6 +4079,91 @@
     }
   };
 
+  // ==================================================================
+  // ===================  CAMBIAR FONDO DE COLOR  ====================
+  // ==================================================================
+  let colorFile = null, colorImgEl = null, colorMime = 'image/png', colorSel = '#ffffff',
+      colorUrl = null, colorToken = 0;
+
+  function toBlobAsync(canvas, mime, q) {
+    return new Promise(res => canvas.toBlob(b => res(b), mime, q));
+  }
+
+  // Codifica intentando conservar el MISMO peso que el archivo original
+  // (misma resolución y formato). PNG queda sin pérdida.
+  async function encodeMismoPeso(canvas, mime, targetBytes) {
+    if (mime === 'image/png') {
+      return { blob: await toBlobAsync(canvas, 'image/png'), mime: 'image/png' };
+    }
+    let lo = 0.3, hi = 0.97, best = null;
+    for (let i = 0; i < 7; i++) {
+      const q = (lo + hi) / 2;
+      const b = await toBlobAsync(canvas, mime, q);
+      if (!b) { return { blob: await toBlobAsync(canvas, 'image/png'), mime: 'image/png' }; }
+      if (b.size > targetBytes) { hi = q; } else { best = b; lo = q; }
+    }
+    if (!best) best = await toBlobAsync(canvas, mime, 0.85);
+    return { blob: best, mime };
+  }
+
+  window.colorSet = (btn, hex) => {
+    colorSel = hex;
+    $('colorChips').querySelectorAll('.color-chip').forEach(b => b.classList.toggle('active', b === btn));
+    colorRedraw();
+  };
+
+  function colorPick(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type) && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      toast('Elige una imagen (PNG, JPG o WebP)'); return;
+    }
+    colorFile = file;
+    let t = file.type;
+    if (!/^image\/(png|jpeg|webp)$/.test(t)) {
+      t = /\.jpe?g$/i.test(file.name) ? 'image/jpeg' : /\.webp$/i.test(file.name) ? 'image/webp' : 'image/png';
+    }
+    colorMime = t;
+    $('colorName').textContent = file.name;
+    $('colorOrigSize').textContent = kb(file.size);
+    hide('colorDownload'); $('colorNewSize').textContent = '…';
+    const u = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(u);
+      colorImgEl = img;
+      hide('colorDrop'); $('colorThumbRow').style.display = 'flex';
+      colorRedraw();
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); toast('No se pudo leer la imagen.'); };
+    img.src = u;
+  }
+
+  window.colorReset = () => {
+    colorFile = null; colorImgEl = null; $('colorInput').value = '';
+    show('colorDrop'); $('colorThumbRow').style.display = 'none';
+  };
+
+  async function colorRedraw() {
+    if (!colorImgEl) return;
+    const c = $('colorCanvas');
+    c.width = colorImgEl.naturalWidth; c.height = colorImgEl.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = colorSel; ctx.fillRect(0, 0, c.width, c.height); // fondo elegido
+    ctx.drawImage(colorImgEl, 0, 0);                                  // foto encima
+    const my = ++colorToken;
+    const dl = $('colorDownload'); dl.style.display = 'none';
+    $('colorNewSize').textContent = 'optimizando…';
+    const { blob, mime } = await encodeMismoPeso(c, colorMime, colorFile.size);
+    if (my !== colorToken) return; // otro color seleccionado mientras tanto
+    const ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
+    if (colorUrl) URL.revokeObjectURL(colorUrl);
+    colorUrl = URL.createObjectURL(blob);
+    dl.href = colorUrl; dl.download = baseName(colorFile.name) + '-fondo.' + ext;
+    $('colorNewSize').textContent = kb(blob.size);
+    dl.style.display = '';
+  }
+
   // --------------------- Cableado de inputs/drag&drop ---------------------
   function wireDrop(zoneId, onFile) {
     const z = $(zoneId); if (!z) return;
@@ -4007,9 +4177,11 @@
     $('ocrInput').addEventListener('change', e => ocrPick(e.target.files[0]));
     $('imgInput').addEventListener('change', e => imgPick(e.target.files[0]));
     $('fondoInput').addEventListener('change', e => fondoPick(e.target.files[0]));
+    $('colorInput').addEventListener('change', e => colorPick(e.target.files[0]));
     wireDrop('ocrDrop', ocrPick);
     wireDrop('imgDrop', imgPick);
     wireDrop('fondoDrop', fondoPick);
+    wireDrop('colorDrop', colorPick);
     // Estado inicial del historial para el botón "atrás".
     try { history.replaceState({ view: 'homeLauncher' }, ''); } catch (_) {}
   }
