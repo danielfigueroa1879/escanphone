@@ -733,6 +733,7 @@
       hide('ampNewWrap'); hide('ampDownload'); hide('ampProgressCard');
       $('ampRun').disabled = false;
       if ($('ampHD')) $('ampHD').disabled = false;
+      if ($('ampUltra')) $('ampUltra').disabled = false;
       ampActualizarNuevo(); ampActualizarAviso();
     };
     img.onerror = () => { toast('No se pudo leer la imagen.'); };
@@ -743,6 +744,7 @@
     show('ampDrop'); $('ampThumbRow').style.display = 'none';
     $('ampRun').disabled = true;
     if ($('ampHD')) $('ampHD').disabled = true;
+    if ($('ampUltra')) $('ampUltra').disabled = true;
     hide('ampProgressCard');
   };
 
@@ -870,12 +872,14 @@
   //   • contraste local "clarity"      → volumen y profundidad
   // Más auto-contraste por percentiles y saturación. Una sola pasada de
   // píxeles → corre en milisegundos aun en fotos grandes.
-  function definirHD(canvas) {
+  function definirHD(canvas, ultra) {
     const w = canvas.width, h = canvas.height;
     if (!w || !h) return canvas;
     const ctx = canvas.getContext('2d');
 
     const base = Math.max(0.6, Math.min(1.4, Math.max(w, h) / 2000));
+    // ULTRA añade una escala aún más fina para exprimir el micro-detalle.
+    const nano   = ultra ? blurData(canvas, base * 0.5) : null; // ultra-fino
     const micro  = blurData(canvas, base);          // frecuencia alta (detalle fino)
     const medio  = blurData(canvas, base * 2.5);     // frecuencia media
     const grande = blurData(canvas, base * 9);       // baja (contraste local)
@@ -903,16 +907,18 @@
       lut[v] = n < 0 ? 0 : n > 255 ? 255 : n;
     }
 
-    // Fuerzas del realce por escala.
-    const kMicro = 1.35;   // detalle fino (poros, pestañas, texto)
-    const kMedio = 0.55;   // definición media
-    const kClar  = 0.35;   // contraste local (clarity)
-    const sat    = 1.10;
+    // Fuerzas del realce por escala. ULTRA sube todas las ganancias.
+    const kNano  = ultra ? 1.15 : 0;      // micro-detalle extremo (solo ultra)
+    const kMicro = ultra ? 1.85 : 1.35;   // detalle fino (poros, pestañas, texto)
+    const kMedio = ultra ? 0.80 : 0.55;   // definición media
+    const kClar  = ultra ? 0.50 : 0.35;   // contraste local (clarity)
+    const sat    = ultra ? 1.14 : 1.10;
 
     for (let i = 0; i < d.length; i += 4) {
       for (let c = 0; c < 3; c++) {
         const j = i + c;
         let v = d[j];
+        if (nano)   v += kNano  * (d[j] - nano[j]);
         if (micro)  v += kMicro * (d[j] - micro[j]);
         if (medio)  v += kMedio * (d[j] - medio[j]);
         if (grande) v += kClar  * (d[j] - grande[j]);
@@ -1050,30 +1056,40 @@
     }
   };
 
-  // Botón "Máxima definición (HD)": amplía por el factor elegido con el modo
-  // rápido y aplica un realce de detalle agresivo (definirHD). No usa IA ni
-  // descarga nada → resultado nítido y definido al instante.
-  window.ampDefinir = async function () {
+  // Botones de definición rápida (sin IA ni descargas): amplían por el factor
+  // elegido con el modo rápido y aplican realce de detalle. 'ultra' aplica una
+  // pasada más agresiva y una segunda pasada fina para máxima definición.
+  async function ejecutarDefinicion(ultra) {
     if (ampBusy || !ampImgEl) return;
     ampBusy = true;
     $('ampRun').disabled = true;
-    const btnHD = $('ampHD'); if (btnHD) btnHD.disabled = true;
+    const btnHD = $('ampHD'), btnUltra = $('ampUltra');
+    if (btnHD) btnHD.disabled = true;
+    if (btnUltra) btnUltra.disabled = true;
     show('ampProgressCard'); hide('ampNewWrap'); hide('ampDownload');
     let tw = Math.round(ampImgEl.naturalWidth * ampFactor);
     let th = Math.round(ampImgEl.naturalHeight * ampFactor);
     const m = Math.max(tw, th);
     if (m > AMP_MAX) { const k = AMP_MAX / m; tw = Math.round(tw * k); th = Math.round(th * k); toast('Se limitó el tamaño para evitar errores de memoria.'); }
+    const etiqueta = ultra ? 'Ultra definición' : 'HD';
     try {
-      setBar('ampBar', 'ampPct', 'ampStatus', 20, 'Ampliando…');
+      setBar('ampBar', 'ampPct', 'ampStatus', 18, 'Ampliando…');
       await new Promise(r => setTimeout(r, 20));
       // ampliarCanvas ya aplica una mejora suave; encima definimos al máximo.
       let canvas = ampliarCanvas(ampImgEl, tw, th);
-      setBar('ampBar', 'ampPct', 'ampStatus', 65, 'Definiendo detalle (HD)…');
+      setBar('ampBar', 'ampPct', 'ampStatus', 55, 'Definiendo detalle (' + etiqueta + ')…');
       await new Promise(r => setTimeout(r, 20));
-      canvas = definirHD(canvas);
+      canvas = definirHD(canvas, ultra);
+      if (ultra) {
+        // Segunda pasada fina para rematar el micro-contraste sin generar halos.
+        setBar('ampBar', 'ampPct', 'ampStatus', 80, 'Rematando micro-detalle…');
+        await new Promise(r => setTimeout(r, 20));
+        canvas = mejorarCalidad(canvas, 0.35);
+      }
       setBar('ampBar', 'ampPct', 'ampStatus', 96, 'Generando archivo…');
       await ampFinalizar(canvas);
-      setBar('ampBar', 'ampPct', 'ampStatus', 100, '¡Listo! Foto definida al máximo.');
+      setBar('ampBar', 'ampPct', 'ampStatus', 100,
+        ultra ? '¡Listo! Ultra definición aplicada.' : '¡Listo! Foto definida al máximo.');
     } catch (e) {
       console.error(e);
       setBar('ampBar', 'ampPct', 'ampStatus', 0, 'Error: ' + (e.message || e));
@@ -1081,9 +1097,12 @@
     } finally {
       $('ampRun').disabled = false;
       if (btnHD) btnHD.disabled = false;
+      if (btnUltra) btnUltra.disabled = false;
       ampBusy = false;
     }
-  };
+  }
+  window.ampDefinir = () => ejecutarDefinicion(false);
+  window.ampUltra = () => ejecutarDefinicion(true);
 
   // --------------------- Cableado de inputs/drag&drop ---------------------
   function wireDrop(zoneId, onFile) {
