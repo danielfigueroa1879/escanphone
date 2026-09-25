@@ -492,8 +492,9 @@ let tipo = 'dos';
     const rigH = Math.hypot(q.br.x - q.tr.x, q.br.y - q.tr.y);
     let targetW = Math.max(200, Math.round((topW + botW) / 2));
     let targetH = Math.max(200, Math.round((lefH + rigH) / 2));
-    // Techo razonable para no generar canvas gigantes.
-    const MAX_SIDE = 2400;
+    // Techo alto para conservar el máximo detalle del documento recortado
+    // sin generar canvas desmesurados.
+    const MAX_SIDE = 3200;
     if (targetW > MAX_SIDE || targetH > MAX_SIDE) {
       const k = MAX_SIDE / Math.max(targetW, targetH);
       targetW = Math.round(targetW * k);
@@ -504,6 +505,8 @@ let tipo = 'dos';
     canvas.width = targetW;
     canvas.height = targetH;
     const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     // Warp por dos triángulos: tl-tr-br  y  tl-br-bl.
@@ -516,7 +519,9 @@ let tipo = 'dos';
 
     if (cropEnhance === 'document') applyDocumentFilter(canvas);
 
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+    // PNG sin pérdida: este recorte todavía se vuelve a dibujar sobre la hoja
+    // final, así que evitamos una compresión JPEG intermedia (doble pérdida).
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
     if (!blob) { showToast('Error al recortar'); return; }
     const url = URL.createObjectURL(blob);
     assignBlob(target, blob);
@@ -566,7 +571,14 @@ let tipo = 'dos';
     if (stream) stream.getTracks().forEach(t => t.stop());
     try {
       stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: facingMode }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        // Pedimos la máxima resolución que soporte la cámara (hasta 4K) para
+        // capturar el documento con el mayor detalle posible. El dispositivo
+        // ajusta a lo que realmente puede entregar.
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 3840 },
+          height: { ideal: 2160 }
+        },
         audio: false
       });
       document.getElementById('camVideo').srcObject = stream;
@@ -636,14 +648,18 @@ let tipo = 'dos';
     canvas.width = vw;
     canvas.height = vh;
     const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(video, 0, 0, vw, vh);
+    // PNG sin pérdida: el frame aún pasará por el recorte/warp, así evitamos
+    // una compresión JPEG intermedia que degradaría el detalle.
     canvas.toBlob(blob => {
       if (!blob) { showToast('Error al capturar'); return; }
       const t = camTarget;
       cerrarCamara();
       cropInitBox = box;
       abrirRecorte(t, blob, 'camera');
-    }, 'image/jpeg', 0.95);
+    }, 'image/png');
   }
 
   // ============= Linterna (flash trasero) =============
@@ -680,9 +696,11 @@ let tipo = 'dos';
   // ============= Generación de la hoja =============
 
   function sheetSize() {
-    const w = 1200;
-    if (tam === 'oficio') return [w, Math.round(w * 13 / 8.5)];   // 1200 × 1835
-    return [w, Math.round(w * 11 / 8.5)];                          // 1200 × 1553 (carta)
+    // 1700 px de ancho ≈ 200 DPI sobre 8.5", buena nitidez para pantalla e
+    // impresión sin generar archivos excesivamente pesados.
+    const w = 1700;
+    if (tam === 'oficio') return [w, Math.round(w * 13 / 8.5)];   // 1700 × 2600
+    return [w, Math.round(w * 11 / 8.5)];                          // 1700 × 2200 (carta)
   }
 
   function loadImage(blob) {
@@ -701,6 +719,8 @@ let tipo = 'dos';
     canvas.width = sheetW;
     canvas.height = sheetH;
     const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, sheetW, sheetH);
 
@@ -779,13 +799,13 @@ let tipo = 'dos';
         format: [mmW, mmH],
         compress: true
       });
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
-      doc.addImage(dataUrl, 'JPEG', 0, 0, mmW, mmH);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+      doc.addImage(dataUrl, 'JPEG', 0, 0, mmW, mmH, undefined, 'SLOW');
       const blob = doc.output('blob');
       return { blob, ext: 'pdf', mime: 'application/pdf', previewUrl: URL.createObjectURL(blob) };
     }
     // JPG por defecto
-    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
     return { blob, ext: 'jpg', mime: 'image/jpeg', previewUrl: URL.createObjectURL(blob) };
   }
 
