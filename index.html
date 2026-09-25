@@ -1471,16 +1471,44 @@
   .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
   .btn.full { flex-basis: 100%; }
 
-  /* Comparación de tamaños (convertir/comprimir) */
-  .size-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
-  .size-box {
-    background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
-    padding: 10px 8px; text-align: center;
+  /* Miniatura de imagen con info al lado (convertir/comprimir) */
+  .thumb-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: stretch; margin-top: 14px; }
+  .thumb-card {
+    width: 230px; max-width: 100%; background: var(--surface);
+    border: 1.5px solid var(--line); border-radius: 14px; padding: 12px;
+    box-shadow: var(--shadow-sm); display: flex; flex-direction: column;
   }
-  .size-box .size-lbl { display: block; font-size: 11px; color: var(--ink-mute); margin-bottom: 3px; }
-  .size-box .size-val { display: block; font-size: 15px; font-weight: 700; }
-  .size-box .size-val.brandtxt { color: var(--brand); }
-  body.dark .size-box { background: var(--surface-2); border-color: var(--line); }
+  .thumb-top { display: flex; align-items: center; gap: 6px; font-size: 12px; margin-bottom: 8px; }
+  .thumb-name { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .thumb-size { color: var(--ink-mute); flex-shrink: 0; }
+  .thumb-x {
+    border: none; background: var(--surface-2); color: var(--ink-soft);
+    width: 22px; height: 22px; border-radius: 50%; cursor: pointer; flex-shrink: 0;
+    font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  }
+  .thumb-x:hover { background: var(--line); color: var(--ink); }
+  .thumb-img { min-height: 150px; padding: 8px; margin-bottom: 10px; }
+  .thumb-img img { max-width: 100%; max-height: 150px; object-fit: contain; }
+  .thumb-new { text-align: center; font-size: 13px; margin-bottom: 10px; color: var(--ink-soft); }
+  .thumb-new b { color: var(--brand); font-size: 15px; }
+  .thumb-saved { display: inline-block; margin-left: 4px; font-size: 12px; font-weight: 700; color: var(--green); }
+  .thumb-dl { margin-top: auto; }
+  .thumb-add {
+    width: 150px; min-height: 120px; border: 2px dashed var(--line-strong);
+    border-radius: 14px; background: var(--surface-2); color: var(--ink-mute);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600;
+    -webkit-tap-highlight-color: transparent; transition: background .15s, border-color .15s, color .15s;
+  }
+  .thumb-add:hover { background: var(--bg); border-color: var(--ink-soft); color: var(--ink-soft); }
+  .thumb-add .thumb-add-ico { font-size: 28px; line-height: 1; }
+  body.dark .thumb-card { background: var(--surface); border-color: var(--line); }
+  body.dark .thumb-x { background: var(--surface-2); }
+  body.dark .thumb-add { background: var(--surface-2); border-color: var(--line-strong); }
+  @media (max-width: 480px) {
+    .thumb-card { width: 100%; }
+    .thumb-add { width: 100%; min-height: 64px; flex-direction: row; }
+  }
 
   body.dark .tool-card .tc-emoji { background: var(--surface-2); }
   body.dark .drop-zone .dz-file { background: var(--surface-2); }
@@ -1904,11 +1932,27 @@
       <div class="dz-emoji">🖼️</div>
       <div class="dz-title">Sube tu imagen</div>
       <div class="dz-sub">Toca aquí o arrastra una imagen PNG, JPG o WebP</div>
-      <div class="dz-file" id="imgFileName" style="display:none;"></div>
     </div>
 
-    <div id="imgPreviewWrap" class="checker" style="display:none; margin-top:14px;">
-      <img id="imgPreview" alt="Vista previa">
+    <!-- Miniatura con la info al lado (como la captura) -->
+    <div class="thumb-row" id="imgThumbRow" style="display:none;">
+      <div class="thumb-card">
+        <div class="thumb-top">
+          <span class="thumb-name" id="imgThumbName">imagen</span>
+          <span class="thumb-size" id="imgSizeOrig">—</span>
+          <button class="thumb-x" type="button" onclick="imgReset()" title="Quitar">✕</button>
+        </div>
+        <div class="checker thumb-img"><img id="imgResultPreview" alt="Miniatura"></div>
+        <div class="thumb-new" id="imgThumbNew" style="display:none;">
+          Tamaño nuevo: <b id="imgSizeNew">—</b><span class="thumb-saved" id="imgSizeSaved"></span>
+        </div>
+        <a class="btn primary thumb-dl" id="imgDownload" download="imagen.webp" href="#" style="display:none;">⬇ Descargar</a>
+      </div>
+      <button type="button" class="thumb-add" id="imgAdd" title="Cambiar imagen"
+              onclick="imgReset(); document.getElementById('imgInput').click();">
+        <span class="thumb-add-ico">＋</span>
+        <span>Otra imagen</span>
+      </button>
     </div>
 
     <div style="margin-top:14px;">
@@ -1942,21 +1986,6 @@
         <span id="imgStatus">Preparando…</span>
         <span class="pct" id="imgPct">0%</span>
       </div>
-    </div>
-  </div>
-
-  <!-- Resultado -->
-  <div class="card" id="imgResultCard" style="display:none;">
-    <h2>Resultado</h2>
-    <div class="checker" style="margin-bottom:12px;"><img id="imgResultPreview" alt="Resultado"></div>
-    <div class="size-grid">
-      <div class="size-box"><span class="size-lbl">Tamaño original</span><span class="size-val" id="imgSizeOrig">—</span></div>
-      <div class="size-box"><span class="size-lbl">Tamaño nuevo</span><span class="size-val brandtxt" id="imgSizeNew">—</span></div>
-      <div class="size-box"><span class="size-lbl">Ahorro</span><span class="size-val" id="imgSizeSaved">—</span></div>
-    </div>
-    <div class="tool-actions">
-      <a class="btn primary" id="imgDownload" download="imagen.webp" href="#">⬇ Descargar</a>
-      <button class="btn" type="button" onclick="imgReset()">↺ Otra imagen</button>
     </div>
   </div>
 
@@ -3854,38 +3883,39 @@
       toast('Elige una imagen (PNG, JPG o WebP)'); return;
     }
     imgFile = file;
-    const fn = $('imgFileName'); fn.textContent = '📎 ' + file.name + ' · ' + kb(file.size); fn.style.display = 'inline-block';
+    $('imgThumbName').textContent = file.name;
+    $('imgSizeOrig').textContent = kb(file.size);
     if (imgSrcUrl) URL.revokeObjectURL(imgSrcUrl);
     imgSrcUrl = URL.createObjectURL(file);
-    $('imgPreview').src = imgSrcUrl; $('imgPreviewWrap').style.display = 'flex';
-    $('imgRun').disabled = false;
-    hide('imgProgressCard'); hide('imgResultCard');
+    $('imgResultPreview').src = imgSrcUrl;          // miniatura de la original
+    hide('imgDrop'); $('imgThumbRow').style.display = 'flex';
+    hide('imgThumbNew'); hide('imgDownload');        // aún sin procesar
+    $('imgRun').disabled = false; hide('imgProgressCard');
   }
   window.imgReset = () => {
     imgFile = null; $('imgInput').value = '';
-    $('imgFileName').style.display = 'none'; $('imgPreviewWrap').style.display = 'none';
-    $('imgRun').disabled = true; hide('imgProgressCard'); hide('imgResultCard');
+    show('imgDrop'); $('imgThumbRow').style.display = 'none';
+    $('imgRun').disabled = true; hide('imgProgressCard');
   };
 
   window.imgProcesar = async function () {
     if (imgBusy || !imgFile) return;
     imgBusy = true; $('imgRun').disabled = true;
-    show('imgProgressCard'); hide('imgResultCard');
+    show('imgProgressCard'); hide('imgThumbNew'); hide('imgDownload');
     setBar('imgBar', 'imgPct', 'imgStatus', 25, 'Procesando imagen…');
     try {
       const { blob, fmt } = await convertir(imgFile, imgFmt);
       setBar('imgBar', 'imgPct', 'imgStatus', 90, 'Generando archivo…');
       if (imgUrl) URL.revokeObjectURL(imgUrl);
       imgUrl = URL.createObjectURL(blob);
-      $('imgResultPreview').src = imgUrl;
+      $('imgResultPreview').src = imgUrl;            // miniatura del resultado
       const ext = fmt === 'jpeg' ? 'jpg' : fmt;
       const dl = $('imgDownload'); dl.href = imgUrl; dl.download = baseName(imgFile.name) + '.' + ext;
       const saved = Math.round((1 - blob.size / imgFile.size) * 100);
-      $('imgSizeOrig').textContent = kb(imgFile.size);
       $('imgSizeNew').textContent = kb(blob.size);
-      $('imgSizeSaved').textContent = saved > 0 ? '−' + saved + '%' : (saved < 0 ? '+' + Math.abs(saved) + '%' : '0%');
+      $('imgSizeSaved').textContent = saved > 0 ? '↓' + saved + '%' : (saved < 0 ? '↑' + Math.abs(saved) + '%' : '');
+      $('imgThumbNew').style.display = ''; dl.style.display = '';
       setBar('imgBar', 'imgPct', 'imgStatus', 100, '¡Listo! Descarga tu imagen.');
-      show('imgResultCard');
     } catch (e) {
       console.error(e);
       setBar('imgBar', 'imgPct', 'imgStatus', 0, 'Error: ' + (e.message || e));
