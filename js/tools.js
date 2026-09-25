@@ -908,18 +908,21 @@
     }
 
     // Fuerzas del realce por escala. ULTRA sube todas las ganancias.
-    const kNano  = ultra ? 1.15 : 0;      // micro-detalle extremo (solo ultra)
-    const kMicro = ultra ? 1.85 : 1.35;   // detalle fino (poros, pestañas, texto)
-    const kMedio = ultra ? 0.80 : 0.55;   // definición media
-    const kClar  = ultra ? 0.50 : 0.35;   // contraste local (clarity)
-    const sat    = ultra ? 1.14 : 1.10;
+    const kNano  = ultra ? 1.60 : 0;      // micro-detalle extremo (solo ultra)
+    const kMicro = ultra ? 2.30 : 1.35;   // detalle fino (poros, pestañas, texto)
+    const kMedio = ultra ? 0.95 : 0.55;   // definición media
+    const kClar  = ultra ? 0.60 : 0.35;   // contraste local (clarity)
+    const sat    = ultra ? 1.16 : 1.10;
+    // Umbral anti-ruido (solo ultra): ignora diferencias minúsculas en las
+    // frecuencias más finas para no amplificar el grano en zonas planas.
+    const nz = ultra ? 3 : 0;
 
     for (let i = 0; i < d.length; i += 4) {
       for (let c = 0; c < 3; c++) {
         const j = i + c;
         let v = d[j];
-        if (nano)   v += kNano  * (d[j] - nano[j]);
-        if (micro)  v += kMicro * (d[j] - micro[j]);
+        if (nano)  { const df = d[j] - nano[j];  if (df > nz || df < -nz) v += kNano * df; }
+        if (micro) { const df = d[j] - micro[j]; if (df > nz || df < -nz) v += kMicro * df; else v += kMicro * df * 0.5; }
         if (medio)  v += kMedio * (d[j] - medio[j]);
         if (grande) v += kClar  * (d[j] - grande[j]);
         v = lut[v < 0 ? 0 : v > 255 ? 255 : v | 0];
@@ -1103,6 +1106,11 @@
   }
   window.ampDefinir = () => ejecutarDefinicion(false);
   window.ampUltra = () => ejecutarDefinicion(true);
+
+  // Se exponen para que el escáner (scanner.js) pueda aplicar el mismo realce
+  // rápido sobre la foto recién capturada, sin duplicar el algoritmo.
+  window.definirHD = definirHD;
+  window.mejorarCalidadRapida = mejorarCalidad;
 
   // --------------------- Cableado de inputs/drag&drop ---------------------
   function wireDrop(zoneId, onFile) {
