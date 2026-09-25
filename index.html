@@ -4057,12 +4057,13 @@
     show('fondoProgressCard'); hide('fondoResultCard'); $('fondoHint').textContent = '';
     try {
       setBar('fondoBar', 'fondoPct', 'fondoStatus', 4, 'Cargando modelo de IA…');
-      $('fondoHint').textContent = 'La primera vez se descarga el modelo (~40 MB). Puede tardar según tu conexión.';
+      $('fondoHint').textContent = 'La primera vez se descarga el modelo de alta calidad (~90 MB). Puede tardar según tu conexión.';
       const mod = await import(CDN.imgly);
       const removeBackground = mod.removeBackground || mod.default;
       if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
       const pngBlob = await removeBackground(fondoFile, {
-        output: { format: 'image/png' },
+        model: 'isnet',                       // modelo de máxima calidad (mejor contorno)
+        output: { format: 'image/png', quality: 1 },
         progress: (key, cur, tot) => {
           const pct = tot ? 6 + (cur / tot) * 80 : 45;
           setBar('fondoBar', 'fondoPct', 'fondoStatus', pct,
@@ -4149,7 +4150,8 @@
       const removeBackground = mod.removeBackground || mod.default;
       if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
       const pngBlob = await removeBackground(colorFile, {
-        output: { format: 'image/png' },
+        model: 'isnet',                       // modelo de máxima calidad (mejor contorno)
+        output: { format: 'image/png', quality: 1 },
         progress: (key, cur, tot) => {
           const pct = tot ? 6 + (cur / tot) * 82 : 45;
           setBar('colorBar', 'colorPct', 'colorStatus', pct,
