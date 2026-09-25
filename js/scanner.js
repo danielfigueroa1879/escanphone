@@ -274,6 +274,44 @@ let tipo = 'dos';
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 
+  // ===== Lupa de precisión =====
+  // Muestra un acercamiento circular de la zona bajo el dedo mientras se
+  // arrastra una esquina, para poder apuntar exactamente al borde del documento.
+  const MAG_SIZE = 132;   // debe coincidir con el .crop-magnifier del CSS
+  const MAG_ZOOM = 2.4;
+
+  function showMagnifier(px, py) {
+    const mag = document.getElementById('cropMagnifier');
+    if (!mag) return;
+    const img = document.getElementById('cropImage');
+    const container = document.getElementById('cropContainer');
+    const disp = getImageDisplayRect();
+    if (!disp.w || !disp.h || !img.src) return;
+    // Fondo = la propia imagen mostrada, ampliada MAG_ZOOM veces.
+    mag.style.backgroundImage = `url("${img.src}")`;
+    mag.style.backgroundSize = `${disp.w * MAG_ZOOM}px ${disp.h * MAG_ZOOM}px`;
+    // Centrar el punto (px,py) en el centro de la lupa.
+    const bgX = MAG_SIZE / 2 - (px - disp.x) * MAG_ZOOM;
+    const bgY = MAG_SIZE / 2 - (py - disp.y) * MAG_ZOOM;
+    mag.style.backgroundPosition = `${bgX}px ${bgY}px`;
+    // Colocar la lupa arriba del dedo; si no cabe, debajo. Siempre dentro del área.
+    let left = px - MAG_SIZE / 2;
+    let top = py - MAG_SIZE - 28;
+    if (top < 8) top = py + 28;
+    const maxLeft = Math.max(8, container.clientWidth - MAG_SIZE - 8);
+    const maxTop = Math.max(8, container.clientHeight - MAG_SIZE - 8);
+    left = clamp(left, 8, maxLeft);
+    top = clamp(top, 8, maxTop);
+    mag.style.left = left + 'px';
+    mag.style.top = top + 'px';
+    mag.classList.add('show');
+  }
+
+  function hideMagnifier() {
+    const mag = document.getElementById('cropMagnifier');
+    if (mag) mag.classList.remove('show');
+  }
+
   function onCropPointerDown(e) {
     if (!cropQuad) return;
     const handle = e.target && e.target.dataset ? e.target.dataset.h : null;
@@ -291,6 +329,8 @@ let tipo = 'dos';
     if (container.setPointerCapture && e.pointerId != null) {
       try { container.setPointerCapture(e.pointerId); } catch (_) {}
     }
+    // Mostrar la lupa centrada en la esquina que se está tomando.
+    showMagnifier(cropQuad[handle].x, cropQuad[handle].y);
   }
 
   function onCropPointerMove(e) {
@@ -305,10 +345,12 @@ let tipo = 'dos';
     const ny = clamp(cropDrag.orig.y + dy, disp.y, disp.y + disp.h);
     cropQuad[cropDrag.handle] = { x: nx, y: ny };
     drawCropQuad();
+    showMagnifier(nx, ny);
   }
 
   function onCropPointerUp() {
     cropDrag = null;
+    hideMagnifier();
   }
 
   function reiniciarRecorte() {
@@ -331,6 +373,7 @@ let tipo = 'dos';
     document.getElementById('cropSvg').style.display = 'none';
     document.getElementById('cropHandles').style.display = 'none';
     document.getElementById('filterBar').style.display = 'none';
+    hideMagnifier();
     cropSourceBlob = null;
     cropTarget = null;
     cropQuad = null;
@@ -370,16 +413,53 @@ let tipo = 'dos';
     ctx.restore();
   }
 
-  // Filtro "documento": escala de grises con alto contraste tipo escaneado.
+  // Filtro "documento" A COLOR: normaliza la iluminación llevando el fondo del
+  // papel a blanco, realza el contraste y refuerza un poco la saturación para
+  // que el documento se vea limpio y nítido SIN perder el color (sellos,
+  // firmas, logos, texto azul/rojo, etc. se conservan).
   function applyDocumentFilter(canvas) {
     const ctx = canvas.getContext('2d');
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const d = imgData.data;
+
+    // 1) Estimar el brillo del fondo (papel): histograma de luminancia y
+    //    tomamos un percentil alto ≈ color del papel iluminado.
+    const hist = new Uint32Array(256);
     for (let i = 0; i < d.length; i += 4) {
-      const gray = 0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2];
-      let v = (gray - 70) * (255 / (200 - 70));
-      if (v < 0) v = 0; else if (v > 255) v = 255;
-      d[i] = d[i+1] = d[i+2] = v;
+      const y = (0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]) | 0;
+      hist[y]++;
+    }
+    const total = d.length / 4;
+    const target = total * 0.82;
+    let acc = 0, bg = 200;
+    for (let v = 0; v < 256; v++) {
+      acc += hist[v];
+      if (acc >= target) { bg = v; break; }
+    }
+    bg = Math.max(120, bg); // no sobre-exponer fotos muy oscuras
+
+    // 2) Ganancia para llevar el fondo a ~245 (casi blanco), más un realce
+    //    suave de contraste y saturación.
+    const gain = 245 / bg;
+    const contrast = 1.18;
+    const sat = 1.12;
+
+    for (let i = 0; i < d.length; i += 4) {
+      let r = d[i] * gain;
+      let g = d[i+1] * gain;
+      let b = d[i+2] * gain;
+      // Contraste alrededor del punto medio.
+      r = (r - 128) * contrast + 128;
+      g = (g - 128) * contrast + 128;
+      b = (b - 128) * contrast + 128;
+      // Saturación: separamos color de la luminancia y lo reforzamos.
+      const l = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = l + (r - l) * sat;
+      g = l + (g - l) * sat;
+      b = l + (b - l) * sat;
+      d[i]   = r < 0 ? 0 : r > 255 ? 255 : r;
+      d[i+1] = g < 0 ? 0 : g > 255 ? 255 : g;
+      d[i+2] = b < 0 ? 0 : b > 255 ? 255 : b;
     }
     ctx.putImageData(imgData, 0, 0);
   }
