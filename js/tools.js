@@ -14,7 +14,9 @@
     pdflib: 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js',
     imgly:  'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm',
     tfjs:   'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0/dist/tf.min.js',
-    upModel:'https://cdn.jsdelivr.net/npm/@upscalerjs/default-model@1.0.0/dist/umd/index.min.js',
+    // Modelos ESRGAN "medium" nativos por escala (x2/x3/x4): mejor calidad
+    // y una sola pasada por factor. Global: ESRGANMedium{N}x
+    upMediaBase: 'https://cdn.jsdelivr.net/npm/@upscalerjs/esrgan-medium@1.0.0/dist/umd/models/esrgan-medium/src/',
     upscaler:'https://cdn.jsdelivr.net/npm/upscaler@1.0.0/dist/browser/umd/upscaler.min.js'
   };
   const _scripts = {};
@@ -754,14 +756,25 @@
     return cur;
   }
 
-  // Ampliación con IA (super-resolución ESRGAN 2× en el navegador). Encadena
-  // 2×→4× y ajusta al factor exacto con lienzo. progreso: 0..1.
+  // Ampliación con IA (super-resolución ESRGAN "medium", modelo nativo por
+  // factor → una sola pasada). Usa WebGL (GPU) si está disponible y procesa
+  // por parches grandes para ir más rápido. progreso: 0..1.
   async function ampliarIA(img, factor, prog) {
     await cargarScript(CDN.tfjs);
-    await cargarScript(CDN.upModel);
+    // Backend WebGL (GPU) para acelerar; si no, el que haya.
+    try {
+      if (window.tf) {
+        await window.tf.ready();
+        if (window.tf.getBackend() !== 'webgl') { try { await window.tf.setBackend('webgl'); } catch (_) {} }
+        await window.tf.ready();
+      }
+    } catch (_) {}
+    const esc = Math.max(2, Math.min(4, Math.round(factor))); // modelo nativo x2/x3/x4
+    await cargarScript(CDN.upMediaBase + 'x' + esc + '/index.min.js');
     await cargarScript(CDN.upscaler);
-    if (!window.Upscaler || !window.DefaultUpscalerJSModel) throw new Error('IA no disponible');
-    const upscaler = new window.Upscaler({ model: window.DefaultUpscalerJSModel });
+    const Model = window['ESRGANMedium' + esc + 'x'];
+    if (!window.Upscaler || !Model) throw new Error('IA no disponible');
+
     // Tope de entrada: si la foto es enorme, se reduce antes de la IA para
     // que no se congele. El tamaño final se logra igual con el lienzo.
     let entrada = img;
@@ -771,20 +784,23 @@
       entrada = redimensionar(img, Math.round(img.naturalWidth * k), Math.round(img.naturalHeight * k));
       toast('Foto muy grande: se optimizó la entrada para la IA.');
     }
-    const grande = Math.max(entrada.width || entrada.naturalWidth, entrada.height || entrada.naturalHeight) > 1000;
-    const opts = grande ? { patchSize: 64, padding: 2 } : {};
-    // 1ª pasada 2×
-    let src = await upscaler.upscale(entrada, Object.assign({}, opts, { progress: r => prog(0.05 + r * (factor >= 4 ? 0.45 : 0.85)) }));
-    let cur = await srcToImage(src);
-    if (factor >= 4) { // 2ª pasada → 4×
-      src = await upscaler.upscale(cur, Object.assign({}, opts, { progress: r => prog(0.50 + r * 0.40) }));
+    const inSide = Math.max(entrada.width || entrada.naturalWidth, entrada.height || entrada.naturalHeight);
+    const opts = inSide > 384 ? { patchSize: 128, padding: 6 } : {}; // parches grandes = más rápido
+
+    const upscaler = new window.Upscaler({ model: Model });
+    let cur;
+    try {
+      const src = await upscaler.upscale(entrada, Object.assign({}, opts, { progress: r => prog(0.05 + r * 0.9) }));
       cur = await srcToImage(src);
+    } finally {
+      try { upscaler.dispose && upscaler.dispose(); } catch (_) {}
     }
-    try { upscaler.dispose && upscaler.dispose(); } catch (_) {}
+    // Devuelve un lienzo con el tamaño final exacto (redimensionar es 1:1 si
+    // ya coincide, así que no pierde calidad cuando no hubo tope de entrada).
     let tw = Math.round(img.naturalWidth * factor), th = Math.round(img.naturalHeight * factor);
     const m = Math.max(tw, th);
     if (m > AMP_MAX) { const k = AMP_MAX / m; tw = Math.round(tw * k); th = Math.round(th * k); }
-    return redimensionar(cur, tw, th); // ajuste al factor exacto (2×/3×/4×)
+    return redimensionar(cur, tw, th);
   }
 
   async function ampFinalizar(canvas) {
