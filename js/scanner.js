@@ -457,14 +457,16 @@ let tipo = 'dos';
     const contrast = 1.15;
     const sat = 1.06;
 
-    // 3) Curva gamma de oscurecimiento (LUT): marca un poco más la tinta sin
-    //    tocar el blanco. El blanco (255) y el negro (0) quedan fijos; sólo se
-    //    oscurecen los tonos intermedios donde vive la letra. Subir GAMMA marca
-    //    más la letra; 1.2 = un oscurecimiento sutil.
-    const GAMMA = 1.2;
+    // 3) Realce SOLO del texto (LUT): los tonos claros del papel (>= WHITE) NO
+    //    se tocan, así la hoja se mantiene blanca; sólo se oscurecen los tonos
+    //    de la tinta. Dentro de la banda [0, WHITE] se aplica una gamma que
+    //    marca la letra (mayor GAMMA = tinta más oscura), dejando fijos el
+    //    negro (0) y el propio punto de papel (WHITE).
+    const WHITE = 225;
+    const GAMMA = 1.7;
     const lut = new Uint8Array(256);
     for (let v = 0; v < 256; v++) {
-      lut[v] = Math.round(255 * Math.pow(v / 255, GAMMA));
+      lut[v] = v >= WHITE ? v : Math.round(WHITE * Math.pow(v / WHITE, GAMMA));
     }
 
     for (let i = 0; i < d.length; i += 4) {
@@ -480,7 +482,7 @@ let tipo = 'dos';
       r = l + (r - l) * sat;
       g = l + (g - l) * sat;
       b = l + (b - l) * sat;
-      // Clamp a entero [0,255] y pasada por la LUT gamma.
+      // Clamp a entero [0,255] y pasada por la LUT de realce de texto.
       r = r < 0 ? 0 : r > 255 ? 255 : r;
       g = g < 0 ? 0 : g > 255 ? 255 : g;
       b = b < 0 ? 0 : b > 255 ? 255 : b;
