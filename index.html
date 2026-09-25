@@ -757,8 +757,10 @@
 
     <div class="amp-actions" style="margin-top:14px;">
       <button class="btn brand full" id="ampRun" onclick="ampProcesar()" disabled>🔍 Ampliar foto</button>
-      <button class="btn brand full" id="ampHD" onclick="ampDefinir()" disabled>✨ Máxima definición (HD)</button>
-      <button class="btn brand full" id="ampUltra" onclick="ampUltra()" disabled>⚡ Ultra definición</button>
+      <div class="amp-def-row">
+        <button class="btn sm" id="ampHD" onclick="ampDefinir()" disabled>✨ Definir HD</button>
+        <button class="btn sm" id="ampUltra" onclick="ampUltra()" disabled>⚡ Ultra</button>
+      </div>
     </div>
     <p class="name-hint" style="margin:12px 2px 0;"><b>✨ Máxima definición / ⚡ Ultra definición:</b> exprimen al máximo el detalle real de la foto (nitidez fina, contraste local y textura) para que al hacer zoom se vea mucho más definida. <b>Ultra</b> aplica un realce más fuerte con una segunda pasada de micro-detalle. Ambos son instantáneos, sin descargas ni GPU. No inventan detalle que la cámara no captó: para súper-resolución real deja activada “Mejorar con IA”.</p>
     <p class="name-hint" style="margin:8px 2px 0;">La IA usa la GPU (WebGL) del dispositivo y descarga un modelo la primera vez (~10 MB). Si no hay GPU o falla, cambia solo al modo rápido, que agranda y además realza nitidez y color al instante (sin descargas). La barra avanza mientras procesa.</p>
