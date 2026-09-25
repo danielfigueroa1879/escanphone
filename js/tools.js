@@ -732,6 +732,7 @@
       hide('ampDrop'); $('ampThumbRow').style.display = 'flex';
       hide('ampNewWrap'); hide('ampDownload'); hide('ampProgressCard');
       $('ampRun').disabled = false;
+      if ($('ampHD')) $('ampHD').disabled = false;
       ampActualizarNuevo(); ampActualizarAviso();
     };
     img.onerror = () => { toast('No se pudo leer la imagen.'); };
@@ -740,7 +741,9 @@
   window.ampReset = () => {
     ampFile = null; ampImgEl = null; $('ampInput').value = '';
     show('ampDrop'); $('ampThumbRow').style.display = 'none';
-    $('ampRun').disabled = true; hide('ampProgressCard');
+    $('ampRun').disabled = true;
+    if ($('ampHD')) $('ampHD').disabled = true;
+    hide('ampProgressCard');
   };
 
   function srcToImage(src) {
@@ -844,6 +847,88 @@
       cur = redimensionar(cur, Math.min(tw, cur.width * 2), Math.min(th, cur.height * 2));
     }
     return mejorarCalidad(cur);
+  }
+
+  // Devuelve los píxeles de una copia desenfocada del lienzo (blur del
+  // navegador, acelerado por GPU cuando está disponible).
+  function blurData(canvas, radius) {
+    const w = canvas.width, h = canvas.height;
+    const bc = document.createElement('canvas');
+    bc.width = w; bc.height = h;
+    const bx = bc.getContext('2d');
+    if (!('filter' in bx)) return null;
+    bx.filter = 'blur(' + radius.toFixed(2) + 'px)';
+    bx.drawImage(canvas, 0, 0);
+    try { return bx.getImageData(0, 0, w, h).data; } catch (_) { return null; }
+  }
+
+  // MÁXIMA DEFINICIÓN (HD) — realce agresivo de detalle, SIN IA ni descargas.
+  // No inventa píxeles: exprime al máximo el detalle real que ya trae la foto
+  // combinando tres escalas de frecuencia:
+  //   • micro-detalle (radio pequeño)  → bordes finos, textura de piel/poros
+  //   • detalle medio                  → definición general
+  //   • contraste local "clarity"      → volumen y profundidad
+  // Más auto-contraste por percentiles y saturación. Una sola pasada de
+  // píxeles → corre en milisegundos aun en fotos grandes.
+  function definirHD(canvas) {
+    const w = canvas.width, h = canvas.height;
+    if (!w || !h) return canvas;
+    const ctx = canvas.getContext('2d');
+
+    const base = Math.max(0.6, Math.min(1.4, Math.max(w, h) / 2000));
+    const micro  = blurData(canvas, base);          // frecuencia alta (detalle fino)
+    const medio  = blurData(canvas, base * 2.5);     // frecuencia media
+    const grande = blurData(canvas, base * 9);       // baja (contraste local)
+
+    let img;
+    try { img = ctx.getImageData(0, 0, w, h); }
+    catch (_) { return canvas; }
+    const d = img.data;
+
+    // Auto-contraste por percentiles de luminancia (recorte 0.4% por lado).
+    const hist = new Uint32Array(256);
+    for (let i = 0; i < d.length; i += 4) {
+      hist[(d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114) / 1000 | 0]++;
+    }
+    const cut = (d.length / 4) * 0.004;
+    let lo = 0, hi = 255, acc = 0;
+    for (let v = 0; v < 256; v++) { acc += hist[v]; if (acc > cut) { lo = v; break; } }
+    acc = 0;
+    for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > cut) { hi = v; break; } }
+    if (hi - lo < 24) { lo = 0; hi = 255; }
+    const range = hi - lo || 1;
+    const lut = new Uint8Array(256);
+    for (let v = 0; v < 256; v++) {
+      let n = (v - lo) / range * 255;
+      lut[v] = n < 0 ? 0 : n > 255 ? 255 : n;
+    }
+
+    // Fuerzas del realce por escala.
+    const kMicro = 1.35;   // detalle fino (poros, pestañas, texto)
+    const kMedio = 0.55;   // definición media
+    const kClar  = 0.35;   // contraste local (clarity)
+    const sat    = 1.10;
+
+    for (let i = 0; i < d.length; i += 4) {
+      for (let c = 0; c < 3; c++) {
+        const j = i + c;
+        let v = d[j];
+        if (micro)  v += kMicro * (d[j] - micro[j]);
+        if (medio)  v += kMedio * (d[j] - medio[j]);
+        if (grande) v += kClar  * (d[j] - grande[j]);
+        v = lut[v < 0 ? 0 : v > 255 ? 255 : v | 0];
+        d[j] = v;
+      }
+      // Saturación suave para que el color no se apague tras el realce.
+      let r = d[i], g = d[i + 1], b = d[i + 2];
+      const l = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = l + (r - l) * sat; g = l + (g - l) * sat; b = l + (b - l) * sat;
+      d[i]     = r < 0 ? 0 : r > 255 ? 255 : r;
+      d[i + 1] = g < 0 ? 0 : g > 255 ? 255 : g;
+      d[i + 2] = b < 0 ? 0 : b > 255 ? 255 : b;
+    }
+    ctx.putImageData(img, 0, 0);
+    return canvas;
   }
 
   // Ampliación con IA (super-resolución ESRGAN, modelo nativo por factor →
@@ -961,6 +1046,41 @@
       toast('❌ ' + (e.message || 'Falló la ampliación'));
       $('ampRun').disabled = false;
     } finally {
+      ampBusy = false;
+    }
+  };
+
+  // Botón "Máxima definición (HD)": amplía por el factor elegido con el modo
+  // rápido y aplica un realce de detalle agresivo (definirHD). No usa IA ni
+  // descarga nada → resultado nítido y definido al instante.
+  window.ampDefinir = async function () {
+    if (ampBusy || !ampImgEl) return;
+    ampBusy = true;
+    $('ampRun').disabled = true;
+    const btnHD = $('ampHD'); if (btnHD) btnHD.disabled = true;
+    show('ampProgressCard'); hide('ampNewWrap'); hide('ampDownload');
+    let tw = Math.round(ampImgEl.naturalWidth * ampFactor);
+    let th = Math.round(ampImgEl.naturalHeight * ampFactor);
+    const m = Math.max(tw, th);
+    if (m > AMP_MAX) { const k = AMP_MAX / m; tw = Math.round(tw * k); th = Math.round(th * k); toast('Se limitó el tamaño para evitar errores de memoria.'); }
+    try {
+      setBar('ampBar', 'ampPct', 'ampStatus', 20, 'Ampliando…');
+      await new Promise(r => setTimeout(r, 20));
+      // ampliarCanvas ya aplica una mejora suave; encima definimos al máximo.
+      let canvas = ampliarCanvas(ampImgEl, tw, th);
+      setBar('ampBar', 'ampPct', 'ampStatus', 65, 'Definiendo detalle (HD)…');
+      await new Promise(r => setTimeout(r, 20));
+      canvas = definirHD(canvas);
+      setBar('ampBar', 'ampPct', 'ampStatus', 96, 'Generando archivo…');
+      await ampFinalizar(canvas);
+      setBar('ampBar', 'ampPct', 'ampStatus', 100, '¡Listo! Foto definida al máximo.');
+    } catch (e) {
+      console.error(e);
+      setBar('ampBar', 'ampPct', 'ampStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló la definición'));
+    } finally {
+      $('ampRun').disabled = false;
+      if (btnHD) btnHD.disabled = false;
       ampBusy = false;
     }
   };

@@ -756,7 +756,9 @@
     <p class="name-hint amp-aviso" id="ampAviso" style="display:none; margin:12px 2px 0;">⚠️ Foto grande: la IA puede tardar bastante. Para un resultado rápido, desactiva “Mejorar con IA”: el modo rápido igual realza nitidez, contraste y color al instante.</p>
 
     <button class="btn brand full" id="ampRun" style="margin-top:14px;" onclick="ampProcesar()" disabled>🔍 Ampliar foto</button>
-    <p class="name-hint" style="margin:12px 2px 0;">La IA usa la GPU (WebGL) del dispositivo y descarga un modelo la primera vez (~10 MB). Si no hay GPU o falla, cambia solo al modo rápido, que agranda y además realza nitidez y color al instante (sin descargas). La barra avanza mientras procesa.</p>
+    <button class="btn primary full" id="ampHD" style="margin-top:10px;" onclick="ampDefinir()" disabled>✨ Máxima definición (HD) · rápido</button>
+    <p class="name-hint" style="margin:12px 2px 0;"><b>✨ Máxima definición:</b> exprime al máximo el detalle real de la foto (nitidez fina, contraste local y textura) para que al hacer zoom se vea mucho más definida. Es instantáneo, sin descargas ni GPU. No inventa detalle que la cámara no captó: para súper-resolución real deja activada “Mejorar con IA”.</p>
+    <p class="name-hint" style="margin:8px 2px 0;">La IA usa la GPU (WebGL) del dispositivo y descarga un modelo la primera vez (~10 MB). Si no hay GPU o falla, cambia solo al modo rápido, que agranda y además realza nitidez y color al instante (sin descargas). La barra avanza mientras procesa.</p>
   </div>
 
   <div class="card" id="ampProgressCard" style="display:none;">
