@@ -4061,14 +4061,10 @@
       const mod = await import(CDN.imgly);
       const removeBackground = mod.removeBackground || mod.default;
       if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
-      const pngBlob = await removeBackground(fondoFile, {
-        model: 'isnet',                       // modelo de máxima calidad (mejor contorno)
-        output: { format: 'image/png', quality: 1 },
-        progress: (key, cur, tot) => {
-          const pct = tot ? 6 + (cur / tot) * 80 : 45;
-          setBar('fondoBar', 'fondoPct', 'fondoStatus', pct,
-            /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
-        }
+      const pngBlob = await quitarFondoIA(removeBackground, fondoFile, (key, cur, tot) => {
+        const pct = tot ? 6 + (cur / tot) * 80 : 45;
+        setBar('fondoBar', 'fondoPct', 'fondoStatus', pct,
+          /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
       });
       $('fondoHint').textContent = '';
       setBar('fondoBar', 'fondoPct', 'fondoStatus', 90, 'Generando archivo…');
@@ -4118,6 +4114,67 @@
     return { blob: best, mime };
   }
 
+  function blobToImage(blob) {
+    return new Promise((res, rej) => {
+      const u = URL.createObjectURL(blob); const i = new Image();
+      i.onload = () => { URL.revokeObjectURL(u); res(i); };
+      i.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer el recorte.')); };
+      i.src = u;
+    });
+  }
+
+  // Afina/suaviza el contorno del recorte (feather): desenfoca ligeramente
+  // el canal alfa y realza el borde para que quede limpio y sin fleco.
+  function refinarBordes(img) {
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    const src = document.createElement('canvas'); src.width = w; src.height = h;
+    const sctx = src.getContext('2d'); sctx.drawImage(img, 0, 0);
+    const id = sctx.getImageData(0, 0, w, h); const data = id.data;
+    // Canvas con el alfa en gris para poder desenfocarlo
+    const am = document.createElement('canvas'); am.width = w; am.height = h;
+    const actx = am.getContext('2d');
+    const aimg = actx.createImageData(w, h); const ad = aimg.data;
+    for (let i = 0; i < data.length; i += 4) { const a = data[i + 3]; ad[i] = ad[i + 1] = ad[i + 2] = a; ad[i + 3] = 255; }
+    actx.putImageData(aimg, 0, 0);
+    // Desenfoque suave del alfa (radio adaptativo a la resolución)
+    const r = Math.max(1.0, Math.min(2.4, Math.max(w, h) / 750));
+    const bc = document.createElement('canvas'); bc.width = w; bc.height = h;
+    const bctx = bc.getContext('2d');
+    if ('filter' in bctx) bctx.filter = 'blur(' + r + 'px)';
+    bctx.drawImage(am, 0, 0);
+    const bd = bctx.getImageData(0, 0, w, h).data;
+    // Rampa de umbral: interior sólido (→255), exterior limpio (→0) y un
+    // borde suave de 1–2 px. lo=55 recorta el fleco/halo del fondo.
+    const lo = 55, hi = 205, span = hi - lo;
+    for (let i = 0; i < data.length; i += 4) {
+      let a = (bd[i] - lo) / span * 255;
+      data[i + 3] = a < 0 ? 0 : a > 255 ? 255 : a;
+    }
+    sctx.putImageData(id, 0, 0);
+    return src;
+  }
+
+  // Quita el fondo con IA (modelo de alta calidad, WebGPU si está disponible)
+  // y devuelve un PNG con el contorno ya afinado.
+  async function quitarFondoIA(removeBackground, file, progress) {
+    const base = { model: 'isnet', output: { format: 'image/png', quality: 1 }, progress };
+    const useGpu = !!(navigator.gpu);
+    let pngBlob;
+    try {
+      pngBlob = await removeBackground(file, useGpu ? Object.assign({ device: 'gpu' }, base) : base);
+    } catch (e) {
+      if (useGpu) { pngBlob = await removeBackground(file, base); } // respaldo a CPU
+      else throw e;
+    }
+    try {
+      const img = await blobToImage(pngBlob);
+      const canvas = refinarBordes(img);
+      const refined = await toBlobAsync(canvas, 'image/png');
+      if (refined) return refined;
+    } catch (_) { /* si el afinado falla, usa el recorte original */ }
+    return pngBlob;
+  }
+
   window.colorSet = (btn, hex) => {
     colorSel = hex;
     $('colorChips').querySelectorAll('.color-chip').forEach(b => b.classList.toggle('active', b === btn));
@@ -4149,14 +4206,10 @@
       const mod = await import(CDN.imgly);
       const removeBackground = mod.removeBackground || mod.default;
       if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
-      const pngBlob = await removeBackground(colorFile, {
-        model: 'isnet',                       // modelo de máxima calidad (mejor contorno)
-        output: { format: 'image/png', quality: 1 },
-        progress: (key, cur, tot) => {
-          const pct = tot ? 6 + (cur / tot) * 82 : 45;
-          setBar('colorBar', 'colorPct', 'colorStatus', pct,
-            /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
-        }
+      const pngBlob = await quitarFondoIA(removeBackground, colorFile, (key, cur, tot) => {
+        const pct = tot ? 6 + (cur / tot) * 82 : 45;
+        setBar('colorBar', 'colorPct', 'colorStatus', pct,
+          /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
       });
       setBar('colorBar', 'colorPct', 'colorStatus', 100, '¡Listo!');
       const u = URL.createObjectURL(pngBlob);
