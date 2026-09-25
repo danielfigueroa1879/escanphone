@@ -413,46 +413,59 @@ let tipo = 'dos';
     ctx.restore();
   }
 
-  // Filtro "documento" A COLOR: normaliza la iluminación llevando el fondo del
-  // papel a blanco, realza el contraste y refuerza un poco la saturación para
-  // que el documento se vea limpio y nítido SIN perder el color (sellos,
-  // firmas, logos, texto azul/rojo, etc. se conservan).
+  // Filtro "documento" A COLOR con BALANCE DE BLANCOS: neutraliza el tono del
+  // papel (p. ej. boletas térmicas cálidas que salían amarillas) llevando el
+  // fondo a blanco NEUTRO, realza el contraste y conserva el color real de
+  // sellos, firmas, logos y texto (azul/rojo, etc.).
   function applyDocumentFilter(canvas) {
     const ctx = canvas.getContext('2d');
     const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const d = imgData.data;
 
-    // 1) Estimar el brillo del fondo (papel): histograma de luminancia y
-    //    tomamos un percentil alto ≈ color del papel iluminado.
-    const hist = new Uint32Array(256);
+    // 1) Estimar el color del fondo POR CANAL (R, G, B) con histogramas
+    //    independientes. Tomar el percentil alto de cada canal ≈ el color del
+    //    papel iluminado en ese canal. Corregir cada canal por separado es lo
+    //    que elimina el tinte (balance de blancos).
+    const hr = new Uint32Array(256);
+    const hg = new Uint32Array(256);
+    const hb = new Uint32Array(256);
     for (let i = 0; i < d.length; i += 4) {
-      const y = (0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]) | 0;
-      hist[y]++;
+      hr[d[i]]++; hg[d[i+1]]++; hb[d[i+2]]++;
     }
     const total = d.length / 4;
     const target = total * 0.82;
-    let acc = 0, bg = 200;
-    for (let v = 0; v < 256; v++) {
-      acc += hist[v];
-      if (acc >= target) { bg = v; break; }
+    function percentil(h) {
+      let acc = 0;
+      for (let v = 0; v < 256; v++) {
+        acc += h[v];
+        if (acc >= target) return v;
+      }
+      return 255;
     }
-    bg = Math.max(120, bg); // no sobre-exponer fotos muy oscuras
+    // Piso para no sobre-exponer fotos muy oscuras.
+    const bgR = Math.max(90, percentil(hr));
+    const bgG = Math.max(90, percentil(hg));
+    const bgB = Math.max(90, percentil(hb));
 
-    // 2) Ganancia para llevar el fondo a ~245 (casi blanco), más un realce
-    //    suave de contraste y saturación.
-    const gain = 245 / bg;
-    const contrast = 1.18;
-    const sat = 1.12;
+    // 2) Ganancia POR CANAL → el fondo de cada canal se lleva a ~245, dejando
+    //    el papel blanco neutro. Contraste suave y saturación ligera (el papel
+    //    ya quedó neutro, así que no se reintroduce ninguna dominante).
+    const TARGET = 245;
+    const gR = TARGET / bgR;
+    const gG = TARGET / bgG;
+    const gB = TARGET / bgB;
+    const contrast = 1.15;
+    const sat = 1.06;
 
     for (let i = 0; i < d.length; i += 4) {
-      let r = d[i] * gain;
-      let g = d[i+1] * gain;
-      let b = d[i+2] * gain;
+      let r = d[i]   * gR;
+      let g = d[i+1] * gG;
+      let b = d[i+2] * gB;
       // Contraste alrededor del punto medio.
       r = (r - 128) * contrast + 128;
       g = (g - 128) * contrast + 128;
       b = (b - 128) * contrast + 128;
-      // Saturación: separamos color de la luminancia y lo reforzamos.
+      // Saturación: separamos color de la luminancia y lo reforzamos un poco.
       const l = 0.299 * r + 0.587 * g + 0.114 * b;
       r = l + (r - l) * sat;
       g = l + (g - l) * sat;
