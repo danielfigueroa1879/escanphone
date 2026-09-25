@@ -1,0 +1,798 @@
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const show = id => { const e = $(id); if (e) e.style.display = ''; };
+  const hide = id => { const e = $(id); if (e) e.style.display = 'none'; };
+  const toast = m => { if (typeof window.showToast === 'function') window.showToast(m); };
+  const baseName = n => (n || 'archivo').replace(/\.[^.]+$/, '') || 'archivo';
+
+  // ---------- CDNs (se cargan solo al usar cada herramienta) ----------
+  const CDN = {
+    pdfjs:  'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js',
+    pdfjsW: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js',
+    tess:   'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js',
+    pdflib: 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js',
+    imgly:  'https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.5.5/+esm'
+  };
+  const _scripts = {};
+  function cargarScript(src) {
+    if (_scripts[src]) return _scripts[src];
+    _scripts[src] = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = src; s.async = true;
+      s.onload = () => res();
+      s.onerror = () => rej(new Error('No se pudo cargar un componente. Revisa tu conexión.'));
+      document.head.appendChild(s);
+    });
+    return _scripts[src];
+  }
+
+  // ------------------------- Router de vistas -------------------------
+  function mostrarVista(id) {
+    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === id));
+    window.scrollTo(0, 0);
+  }
+  function abrirHerramienta(id) {
+    mostrarVista(id);
+    try { history.pushState({ view: id }, ''); } catch (_) {}
+  }
+  function volverInicio() {
+    mostrarVista('homeLauncher');
+    try { history.pushState({ view: 'homeLauncher' }, ''); } catch (_) {}
+  }
+  window.abrirHerramienta = abrirHerramienta;
+  window.volverInicio = volverInicio;
+  window.addEventListener('popstate', e => {
+    mostrarVista((e.state && e.state.view) || 'homeLauncher');
+  });
+
+  // --------------------- Catálogo de herramientas ---------------------
+  // Para agregar una herramienta nueva: añade una entrada aquí y crea
+  // su panel <div class="container view" id="...">.
+  const HERRAMIENTAS = [
+    { id: 'appEscaner', emoji: '📄', title: 'Escáner de Documentos',
+      desc: 'Combina frente y reverso o centra un documento para imprimir.' },
+    { id: 'appOCR', emoji: '🔎', title: 'OCR de PDF', badge: 'Nuevo',
+      desc: 'Convierte un PDF escaneado en texto seleccionable y buscable.' },
+    { id: 'appImagen', emoji: '🗜️', title: 'Convertir / Comprimir a WebP', badge: 'Nuevo',
+      desc: 'Pasa JPG o PNG a WebP y comprime según el porcentaje.' },
+    { id: 'appFondo', emoji: '🪄', title: 'Quitar fondo', badge: 'Nuevo',
+      desc: 'Elimina el fondo de una foto y déjala transparente.' },
+    { id: 'appColor', emoji: '🎨', title: 'Cambiar fondo de color', badge: 'Nuevo',
+      desc: 'Pon fondo blanco, azul, verde o rojo detrás de la foto.' },
+    { id: 'appAmpliar', emoji: '🔍', title: 'Ampliar foto', badge: 'Nuevo',
+      desc: 'Agranda la foto 2×, 3× o 4× manteniendo la nitidez posible.' },
+    { soon: true, emoji: '➕', title: 'Más herramientas', desc: 'Se irán agregando pronto.' }
+  ];
+  function renderLauncher() {
+    const grid = $('launcherGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    HERRAMIENTAS.forEach(t => {
+      const card = document.createElement(t.soon ? 'div' : 'button');
+      card.className = 'tool-card' + (t.soon ? ' soon' : '');
+      if (!t.soon) { card.type = 'button'; card.addEventListener('click', () => abrirHerramienta(t.id)); }
+      card.innerHTML =
+        '<div class="tc-emoji">' + t.emoji + '</div>' +
+        '<div class="tc-txt"><h3>' + t.title + '</h3><p>' + t.desc + '</p></div>' +
+        (t.badge ? '<span class="tc-badge">' + t.badge + '</span>' : '') +
+        (t.soon ? '' : '<span class="tc-go">›</span>');
+      grid.appendChild(card);
+    });
+  }
+
+  // ------------------------- Utilidades UI ---------------------------
+  function setBar(barId, pctId, statusId, pct, status) {
+    const p = Math.max(0, Math.min(100, pct));
+    if ($(barId)) $(barId).style.width = p + '%';
+    if ($(pctId)) $(pctId).textContent = Math.round(p) + '%';
+    if (statusId && status != null && $(statusId)) $(statusId).textContent = status;
+  }
+  function segActivate(segId, btn) {
+    const seg = $(segId); if (!seg) return;
+    seg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+  }
+  function imageFileToCanvas(file) {
+    return new Promise((res, rej) => {
+      const img = new Image(); const u = URL.createObjectURL(file);
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        c.getContext('2d').drawImage(img, 0, 0);
+        URL.revokeObjectURL(u); res(c);
+      };
+      img.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer la imagen.')); };
+      img.src = u;
+    });
+  }
+
+  // ==================================================================
+  // ==========================  OCR DE PDF  ==========================
+  // ==================================================================
+  let ocrLang = 'spa+eng', ocrOut = 'pdf', ocrFile = null, ocrText = '', ocrBusy = false, ocrUrl = null;
+
+  window.ocrSetLang = (btn, l) => { ocrLang = l; segActivate('ocrLangSeg', btn); };
+  window.ocrSetOut = (btn, o) => { ocrOut = o; segActivate('ocrOutSeg', btn); };
+
+  function ocrPick(file) {
+    if (!file) return;
+    ocrFile = file;
+    const fn = $('ocrFileName'); fn.textContent = '📎 ' + file.name; fn.style.display = 'inline-block';
+    $('ocrRun').disabled = false;
+    hide('ocrProgressCard'); hide('ocrResultCard');
+  }
+  window.ocrReset = () => {
+    ocrFile = null; ocrText = '';
+    $('ocrInput').value = ''; $('ocrFileName').style.display = 'none';
+    $('ocrRun').disabled = true; hide('ocrProgressCard'); hide('ocrResultCard');
+  };
+  window.ocrCopiar = () => {
+    if (!ocrText) { toast('No hay texto para copiar'); return; }
+    (navigator.clipboard ? navigator.clipboard.writeText(ocrText) : Promise.reject())
+      .then(() => toast('📋 Texto copiado')).catch(() => toast('No se pudo copiar'));
+  };
+
+  async function renderPdfPage(pdf, num) {
+    const page = await pdf.getPage(num);
+    const base = page.getViewport({ scale: 1 });
+    const scale = Math.min(3, Math.max(1, 2200 / Math.max(base.width, base.height)));
+    const vp = page.getViewport({ scale });
+    const c = document.createElement('canvas');
+    c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+    await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+    return c;
+  }
+
+  // Extrae las palabras reconocidas con sus coordenadas (bbox en píxeles).
+  function extractWords(data) {
+    const words = [];
+    (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p =>
+      (p.lines || []).forEach(l => (l.words || []).forEach(w => {
+        if (w.text && w.bbox) words.push({ text: w.text, bbox: w.bbox });
+      }))));
+    if (!words.length && Array.isArray(data.words)) {
+      data.words.forEach(w => { if (w.text && w.bbox) words.push({ text: w.text, bbox: w.bbox }); });
+    }
+    if (!words.length && data.hocr) {
+      try {
+        const doc = new DOMParser().parseFromString(data.hocr, 'text/html');
+        doc.querySelectorAll('.ocrx_word').forEach(el => {
+          const m = (el.getAttribute('title') || '').match(/bbox (\d+) (\d+) (\d+) (\d+)/);
+          const t = el.textContent || '';
+          if (m && t.trim()) words.push({ text: t, bbox: { x0: +m[1], y0: +m[2], x1: +m[3], y1: +m[4] } });
+        });
+      } catch (_) {}
+    }
+    return words;
+  }
+
+  // Deja solo caracteres representables por la fuente estándar (WinAnsi).
+  function sanitizeWinAnsi(s) {
+    if (!s) return '';
+    s = s.replace(/[‘’′]/g, "'").replace(/[“”″]/g, '"')
+         .replace(/[–—]/g, '-').replace(/…/g, '...').replace(/ /g, ' ');
+    let out = '';
+    for (const ch of s) {
+      const c = ch.codePointAt(0);
+      if (c === 9 || (c >= 32 && c <= 126) || (c >= 160 && c <= 255)) out += ch;
+    }
+    return out.trim();
+  }
+
+  function dataURLtoBytes(dataURL) {
+    const bin = atob(dataURL.split(',')[1]);
+    const u = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+    return u;
+  }
+
+  // Dibuja una capa de texto INVISIBLE sobre la página, alineada a la imagen
+  // → el PDF conserva su aspecto original pero queda seleccionable/buscable.
+  function dibujarCapaTexto(page, words, cw, ch, font) {
+    const size0 = page.getSize();
+    const sx = size0.width / cw, sy = size0.height / ch;
+    for (const w of words) {
+      const t = sanitizeWinAnsi(w.text);
+      if (!t) continue;
+      const b = w.bbox;
+      const wordH = (b.y1 - b.y0) * sy;
+      if (!(wordH > 0)) continue;
+      const size = Math.max(1, Math.min(wordH * 0.9, 400));
+      const x = b.x0 * sx;
+      const y = size0.height - b.y1 * sy + wordH * 0.12; // línea base
+      try { page.drawText(t, { x, y, size, font, opacity: 0 }); } catch (_) {}
+    }
+  }
+
+  window.ocrProcesar = async function () {
+    if (ocrBusy || !ocrFile) return;
+    ocrBusy = true; $('ocrRun').disabled = true;
+    show('ocrProgressCard'); hide('ocrResultCard');
+    setBar('ocrBar', 'ocrPct', 'ocrStatus', 3, 'Cargando componentes…');
+    let worker = null;
+    try {
+      await cargarScript(CDN.tess);
+      const esPdf = ocrFile.type === 'application/pdf' || /\.pdf$/i.test(ocrFile.name);
+
+      // 1) Fuente de páginas
+      let pdfjsDoc = null, originalBytes = null, total = 1;
+      if (esPdf) {
+        await cargarScript(CDN.pdfjs);
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = CDN.pdfjsW;
+        setBar('ocrBar', 'ocrPct', 'ocrStatus', 6, 'Leyendo el PDF…');
+        originalBytes = new Uint8Array(await ocrFile.arrayBuffer());
+        pdfjsDoc = await window.pdfjsLib.getDocument({ data: originalBytes.slice() }).promise;
+        total = pdfjsDoc.numPages;
+      }
+
+      // 2) Documento de salida (PDF): partimos del PDF ORIGINAL y solo le
+      //    agregamos la capa de texto. Así se descarga el mismo archivo,
+      //    idéntico, pero con el OCR ya aplicado.
+      let outDoc = null, usarOriginal = false, font = null;
+      if (ocrOut === 'pdf') {
+        await cargarScript(CDN.pdflib);
+        if (esPdf) {
+          try {
+            outDoc = await window.PDFLib.PDFDocument.load(originalBytes, { ignoreEncryption: true });
+            usarOriginal = outDoc.getPageCount() === total;
+            if (!usarOriginal) outDoc = null;
+          } catch (_) { outDoc = null; }
+        }
+        if (!outDoc) outDoc = await window.PDFLib.PDFDocument.create();
+        font = await outDoc.embedFont(window.PDFLib.StandardFonts.Helvetica);
+      }
+
+      // 3) OCR página por página
+      const st = { done: 0 };
+      worker = await window.Tesseract.createWorker(ocrLang, 1, {
+        logger: m => {
+          if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+            const frac = (st.done + m.progress) / total;
+            setBar('ocrBar', 'ocrPct', 'ocrStatus', 8 + frac * 86,
+              'Reconociendo texto… (' + Math.min(st.done + 1, total) + '/' + total + ')');
+          }
+        }
+      });
+
+      let textAll = '';
+      for (let i = 0; i < total; i++) {
+        const canvas = esPdf ? await renderPdfPage(pdfjsDoc, i + 1) : await imageFileToCanvas(ocrFile);
+        const { data } = await worker.recognize(canvas, {}, { text: true, blocks: true, hocr: true });
+        textAll += (data.text || '') + '\n\n';
+
+        if (ocrOut === 'pdf') {
+          const words = extractWords(data);
+          let page;
+          if (usarOriginal) {
+            page = outDoc.getPage(i);
+          } else {
+            const jpg = dataURLtoBytes(canvas.toDataURL('image/jpeg', 0.82));
+            const img = await outDoc.embedJpg(jpg);
+            page = outDoc.addPage([img.width, img.height]);
+            page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+          }
+          dibujarCapaTexto(page, words, canvas.width, canvas.height, font);
+        }
+        canvas.width = canvas.height = 0; // liberar memoria
+        st.done++;
+      }
+      await worker.terminate(); worker = null;
+      ocrText = textAll.trim();
+
+      // 4) Generar archivo descargable
+      setBar('ocrBar', 'ocrPct', 'ocrStatus', 96, 'Generando archivo…');
+      if (ocrUrl) { URL.revokeObjectURL(ocrUrl); ocrUrl = null; }
+      let blob, filename;
+      if (ocrOut === 'pdf') {
+        blob = new Blob([await outDoc.save()], { type: 'application/pdf' });
+        filename = baseName(ocrFile.name) + '_ocr.pdf';
+      } else {
+        blob = new Blob([ocrText || ''], { type: 'text/plain;charset=utf-8' });
+        filename = baseName(ocrFile.name) + '_ocr.txt';
+      }
+      ocrUrl = URL.createObjectURL(blob);
+      const dl = $('ocrDownload'); dl.href = ocrUrl; dl.download = filename;
+      $('ocrTextPreview').textContent = ocrText || '(No se detectó texto en el documento.)';
+      setBar('ocrBar', 'ocrPct', 'ocrStatus', 100, '¡Listo! Descarga tu archivo.');
+      show('ocrResultCard');
+    } catch (e) {
+      console.error(e);
+      setBar('ocrBar', 'ocrPct', 'ocrStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló el OCR'));
+      $('ocrRun').disabled = false;
+    } finally {
+      if (worker) { try { await worker.terminate(); } catch (_) {} }
+      ocrBusy = false;
+    }
+  };
+
+  // Tamaño legible (KB / MB)
+  function kb(bytes) {
+    return bytes >= 1048576 ? (bytes / 1048576).toFixed(2) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
+  }
+
+  // Convierte/recomprime un blob de imagen al formato pedido.
+  // quality: 0–1 (si es null se lee el control deslizante de compresión).
+  function convertir(srcBlob, fmt, quality) {
+    return new Promise((res, rej) => {
+      const img = new Image(); const u = URL.createObjectURL(srcBlob);
+      img.onload = () => {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth; c.height = img.naturalHeight;
+        const ctx = c.getContext('2d');
+        const mime = fmt === 'png' ? 'image/png' : fmt === 'jpeg' ? 'image/jpeg' : 'image/webp';
+        if (mime === 'image/jpeg') { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height); }
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(u);
+        const q = quality != null ? quality : (+$('imgQuality').value) / 100;
+        const done = (b, usedFmt) => b ? res({ blob: b, fmt: usedFmt }) : rej(new Error('No se pudo convertir la imagen.'));
+        c.toBlob(b => {
+          if (!b && mime === 'image/webp') { // Safari antiguo sin WebP → PNG
+            toast('Tu navegador no exporta WebP; se usó PNG.');
+            c.toBlob(b2 => done(b2, 'png'), 'image/png');
+          } else done(b, fmt);
+        }, mime, q);
+      };
+      img.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer la imagen.')); };
+      img.src = u;
+    });
+  }
+
+  // ==================================================================
+  // ==============  CONVERTIR / COMPRIMIR A WEBP  ====================
+  // ==================================================================
+  let imgFmt = 'webp', imgFile = null, imgBusy = false, imgUrl = null, imgSrcUrl = null;
+
+  window.imgSetFmt = (btn, f) => {
+    imgFmt = f; segActivate('imgFmtSeg', btn);
+    $('imgQualityRow').style.display = (f === 'png') ? 'none' : 'flex';
+    const dl = $('imgDownload'); if (dl && imgFile) dl.download = baseName(imgFile.name) + '.' + (f === 'jpeg' ? 'jpg' : f);
+  };
+
+  function imgPick(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type) && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      toast('Elige una imagen (PNG, JPG o WebP)'); return;
+    }
+    imgFile = file;
+    $('imgThumbName').textContent = file.name;
+    $('imgSizeOrig').textContent = kb(file.size);
+    if (imgSrcUrl) URL.revokeObjectURL(imgSrcUrl);
+    imgSrcUrl = URL.createObjectURL(file);
+    $('imgResultPreview').src = imgSrcUrl;          // miniatura de la original
+    hide('imgDrop'); $('imgThumbRow').style.display = 'flex';
+    hide('imgThumbNew'); hide('imgDownload');        // aún sin procesar
+    $('imgRun').disabled = false; hide('imgProgressCard');
+  }
+  window.imgReset = () => {
+    imgFile = null; $('imgInput').value = '';
+    show('imgDrop'); $('imgThumbRow').style.display = 'none';
+    $('imgRun').disabled = true; hide('imgProgressCard');
+  };
+
+  window.imgProcesar = async function () {
+    if (imgBusy || !imgFile) return;
+    imgBusy = true; $('imgRun').disabled = true;
+    show('imgProgressCard'); hide('imgThumbNew'); hide('imgDownload');
+    setBar('imgBar', 'imgPct', 'imgStatus', 25, 'Procesando imagen…');
+    try {
+      const { blob, fmt } = await convertir(imgFile, imgFmt);
+      setBar('imgBar', 'imgPct', 'imgStatus', 90, 'Generando archivo…');
+      if (imgUrl) URL.revokeObjectURL(imgUrl);
+      imgUrl = URL.createObjectURL(blob);
+      $('imgResultPreview').src = imgUrl;            // miniatura del resultado
+      const ext = fmt === 'jpeg' ? 'jpg' : fmt;
+      const dl = $('imgDownload'); dl.href = imgUrl; dl.download = baseName(imgFile.name) + '.' + ext;
+      const saved = Math.round((1 - blob.size / imgFile.size) * 100);
+      $('imgSizeNew').textContent = kb(blob.size);
+      $('imgSizeSaved').textContent = saved > 0 ? '↓' + saved + '%' : (saved < 0 ? '↑' + Math.abs(saved) + '%' : '');
+      $('imgThumbNew').style.display = ''; dl.style.display = '';
+      setBar('imgBar', 'imgPct', 'imgStatus', 100, '¡Listo! Descarga tu imagen.');
+    } catch (e) {
+      console.error(e);
+      setBar('imgBar', 'imgPct', 'imgStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló el proceso'));
+      $('imgRun').disabled = false;
+    } finally {
+      imgBusy = false;
+    }
+  };
+
+  // ==================================================================
+  // =========================  QUITAR FONDO  ========================
+  // ==================================================================
+  let fondoFmt = 'png', fondoFile = null, fondoBusy = false, fondoUrl = null, fondoSrcUrl = null;
+
+  window.fondoSetFmt = (btn, f) => {
+    fondoFmt = f; segActivate('fondoFmtSeg', btn);
+    const dl = $('fondoDownload'); if (dl && fondoFile) dl.download = baseName(fondoFile.name) + '-sin-fondo.' + f;
+  };
+
+  function fondoPick(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type) && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      toast('Elige una imagen (PNG, JPG o WebP)'); return;
+    }
+    fondoFile = file;
+    const fn = $('fondoFileName'); fn.textContent = '📎 ' + file.name; fn.style.display = 'inline-block';
+    if (fondoSrcUrl) URL.revokeObjectURL(fondoSrcUrl);
+    fondoSrcUrl = URL.createObjectURL(file);
+    $('fondoPreview').src = fondoSrcUrl; $('fondoPreviewWrap').style.display = 'flex';
+    $('fondoRun').disabled = false;
+    hide('fondoProgressCard'); hide('fondoResultCard');
+  }
+  window.fondoReset = () => {
+    fondoFile = null; $('fondoInput').value = '';
+    $('fondoFileName').style.display = 'none'; $('fondoPreviewWrap').style.display = 'none';
+    $('fondoRun').disabled = true; hide('fondoProgressCard'); hide('fondoResultCard');
+  };
+
+  window.fondoProcesar = async function () {
+    if (fondoBusy || !fondoFile) return;
+    fondoBusy = true; $('fondoRun').disabled = true;
+    show('fondoProgressCard'); hide('fondoResultCard'); $('fondoHint').textContent = '';
+    try {
+      setBar('fondoBar', 'fondoPct', 'fondoStatus', 4, 'Cargando modelo de IA…');
+      $('fondoHint').textContent = 'La primera vez se descarga el modelo de alta calidad (~90 MB). Puede tardar según tu conexión.';
+      const mod = await import(CDN.imgly);
+      const removeBackground = mod.removeBackground || mod.default;
+      if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
+      const pngBlob = await quitarFondoIA(removeBackground, fondoFile, (key, cur, tot) => {
+        const pct = tot ? 6 + (cur / tot) * 80 : 45;
+        setBar('fondoBar', 'fondoPct', 'fondoStatus', pct,
+          /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
+      });
+      $('fondoHint').textContent = '';
+      setBar('fondoBar', 'fondoPct', 'fondoStatus', 90, 'Generando archivo…');
+      let outBlob = pngBlob, ext = 'png';
+      if (fondoFmt === 'webp') { const r = await convertir(pngBlob, 'webp', 0.92); outBlob = r.blob; ext = r.fmt === 'jpeg' ? 'jpg' : r.fmt; }
+      if (fondoUrl) URL.revokeObjectURL(fondoUrl);
+      fondoUrl = URL.createObjectURL(outBlob);
+      $('fondoResultPreview').src = fondoUrl;
+      const dl = $('fondoDownload'); dl.href = fondoUrl; dl.download = baseName(fondoFile.name) + '-sin-fondo.' + ext;
+      $('fondoSizeInfo').textContent = ext.toUpperCase() + ' · ' + kb(outBlob.size);
+      setBar('fondoBar', 'fondoPct', 'fondoStatus', 100, '¡Listo! Descarga tu imagen.');
+      show('fondoResultCard');
+    } catch (e) {
+      console.error(e);
+      setBar('fondoBar', 'fondoPct', 'fondoStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló el proceso'));
+      $('fondoRun').disabled = false;
+    } finally {
+      fondoBusy = false;
+    }
+  };
+
+  // ==================================================================
+  // ===================  CAMBIAR FONDO DE COLOR  ====================
+  // ==================================================================
+  let colorFile = null, colorImgEl = null, colorMime = 'image/png', colorSel = '#ffffff',
+      colorUrl = null, colorToken = 0;
+
+  function toBlobAsync(canvas, mime, q) {
+    return new Promise(res => canvas.toBlob(b => res(b), mime, q));
+  }
+
+  // Codifica intentando conservar el MISMO peso que el archivo original
+  // (misma resolución y formato). PNG queda sin pérdida.
+  async function encodeMismoPeso(canvas, mime, targetBytes) {
+    if (mime === 'image/png') {
+      return { blob: await toBlobAsync(canvas, 'image/png'), mime: 'image/png' };
+    }
+    let lo = 0.3, hi = 0.97, best = null;
+    for (let i = 0; i < 7; i++) {
+      const q = (lo + hi) / 2;
+      const b = await toBlobAsync(canvas, mime, q);
+      if (!b) { return { blob: await toBlobAsync(canvas, 'image/png'), mime: 'image/png' }; }
+      if (b.size > targetBytes) { hi = q; } else { best = b; lo = q; }
+    }
+    if (!best) best = await toBlobAsync(canvas, mime, 0.85);
+    return { blob: best, mime };
+  }
+
+  function blobToImage(blob) {
+    return new Promise((res, rej) => {
+      const u = URL.createObjectURL(blob); const i = new Image();
+      i.onload = () => { URL.revokeObjectURL(u); res(i); };
+      i.onerror = () => { URL.revokeObjectURL(u); rej(new Error('No se pudo leer el recorte.')); };
+      i.src = u;
+    });
+  }
+
+  // Afina/suaviza el contorno del recorte (feather): desenfoca ligeramente
+  // el canal alfa y realza el borde para que quede limpio y sin fleco.
+  function refinarBordes(img) {
+    const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+    const src = document.createElement('canvas'); src.width = w; src.height = h;
+    const sctx = src.getContext('2d'); sctx.drawImage(img, 0, 0);
+    const id = sctx.getImageData(0, 0, w, h); const data = id.data;
+    // Canvas con el alfa en gris para poder desenfocarlo
+    const am = document.createElement('canvas'); am.width = w; am.height = h;
+    const actx = am.getContext('2d');
+    const aimg = actx.createImageData(w, h); const ad = aimg.data;
+    for (let i = 0; i < data.length; i += 4) { const a = data[i + 3]; ad[i] = ad[i + 1] = ad[i + 2] = a; ad[i + 3] = 255; }
+    actx.putImageData(aimg, 0, 0);
+    // Desenfoque suave del alfa (radio adaptativo a la resolución)
+    const r = Math.max(1.0, Math.min(2.4, Math.max(w, h) / 750));
+    const bc = document.createElement('canvas'); bc.width = w; bc.height = h;
+    const bctx = bc.getContext('2d');
+    if ('filter' in bctx) bctx.filter = 'blur(' + r + 'px)';
+    bctx.drawImage(am, 0, 0);
+    const bd = bctx.getImageData(0, 0, w, h).data;
+    // Rampa de umbral: interior sólido (→255), exterior limpio (→0) y un
+    // borde suave de 1–2 px. lo=55 recorta el fleco/halo del fondo.
+    const lo = 55, hi = 205, span = hi - lo;
+    for (let i = 0; i < data.length; i += 4) {
+      let a = (bd[i] - lo) / span * 255;
+      data[i + 3] = a < 0 ? 0 : a > 255 ? 255 : a;
+    }
+    sctx.putImageData(id, 0, 0);
+    return src;
+  }
+
+  // Quita el fondo con IA (modelo de alta calidad, WebGPU si está disponible)
+  // y devuelve un PNG con el contorno ya afinado.
+  async function quitarFondoIA(removeBackground, file, progress) {
+    const base = { model: 'isnet', output: { format: 'image/png', quality: 1 }, progress };
+    const useGpu = !!(navigator.gpu);
+    let pngBlob;
+    try {
+      pngBlob = await removeBackground(file, useGpu ? Object.assign({ device: 'gpu' }, base) : base);
+    } catch (e) {
+      if (useGpu) { pngBlob = await removeBackground(file, base); } // respaldo a CPU
+      else throw e;
+    }
+    try {
+      const img = await blobToImage(pngBlob);
+      const canvas = refinarBordes(img);
+      const refined = await toBlobAsync(canvas, 'image/png');
+      if (refined) return refined;
+    } catch (_) { /* si el afinado falla, usa el recorte original */ }
+    return pngBlob;
+  }
+
+  window.colorSet = (btn, hex) => {
+    colorSel = hex;
+    $('colorChips').querySelectorAll('.color-chip').forEach(b => b.classList.toggle('active', b === btn));
+    colorRedraw();
+  };
+
+  // ¿La imagen tiene zonas transparentes? (para saber si el color se verá)
+  function tieneTransparencia(img) {
+    const s = 80;
+    const r = Math.min(1, s / Math.max(img.naturalWidth, img.naturalHeight, 1));
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(img.naturalWidth * r));
+    c.height = Math.max(1, Math.round(img.naturalHeight * r));
+    const ctx = c.getContext('2d');
+    ctx.drawImage(img, 0, 0, c.width, c.height);
+    try {
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 3; i < d.length; i += 4) if (d[i] < 250) return true;
+    } catch (_) { return true; }
+    return false;
+  }
+
+  // Quita el fondo con IA para poder aplicar el color (fotos opacas).
+  window.colorQuitarFondo = async function () {
+    if (!colorFile) return;
+    const btn = $('colorQuitarBtn'); btn.disabled = true; $('colorProgWrap').style.display = '';
+    try {
+      setBar('colorBar', 'colorPct', 'colorStatus', 4, 'Cargando modelo de IA…');
+      const mod = await import(CDN.imgly);
+      const removeBackground = mod.removeBackground || mod.default;
+      if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
+      const pngBlob = await quitarFondoIA(removeBackground, colorFile, (key, cur, tot) => {
+        const pct = tot ? 6 + (cur / tot) * 82 : 45;
+        setBar('colorBar', 'colorPct', 'colorStatus', pct,
+          /fetch/i.test(key || '') ? 'Descargando modelo…' : 'Quitando el fondo…');
+      });
+      setBar('colorBar', 'colorPct', 'colorStatus', 100, '¡Listo!');
+      const u = URL.createObjectURL(pngBlob);
+      const im = new Image();
+      im.onload = () => {
+        URL.revokeObjectURL(u);
+        colorImgEl = im;                 // ahora el sujeto está recortado (con transparencia)
+        hide('colorBgBox');
+        colorRedraw();                   // aplica el color elegido detrás
+      };
+      im.onerror = () => { URL.revokeObjectURL(u); toast('No se pudo procesar la imagen.'); btn.disabled = false; };
+      im.src = u;
+    } catch (e) {
+      console.error(e);
+      setBar('colorBar', 'colorPct', 'colorStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló el proceso'));
+      btn.disabled = false;
+    }
+  };
+
+  function colorPick(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type) && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      toast('Elige una imagen (PNG, JPG o WebP)'); return;
+    }
+    colorFile = file;
+    let t = file.type;
+    if (!/^image\/(png|jpeg|webp)$/.test(t)) {
+      t = /\.jpe?g$/i.test(file.name) ? 'image/jpeg' : /\.webp$/i.test(file.name) ? 'image/webp' : 'image/png';
+    }
+    colorMime = t;
+    $('colorName').textContent = file.name;
+    $('colorOrigSize').textContent = kb(file.size);
+    hide('colorDownload'); $('colorNewSize').textContent = '…';
+    const u = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(u);
+      colorImgEl = img;
+      hide('colorDrop'); $('colorThumbRow').style.display = 'flex';
+      // Si la foto es opaca (sin transparencia), el color no se verá:
+      // ofrecemos quitar el fondo automáticamente.
+      const btn = $('colorQuitarBtn'); btn.disabled = false; $('colorProgWrap').style.display = 'none';
+      $('colorBgBox').style.display = tieneTransparencia(img) ? 'none' : '';
+      colorRedraw();
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); toast('No se pudo leer la imagen.'); };
+    img.src = u;
+  }
+
+  window.colorReset = () => {
+    colorFile = null; colorImgEl = null; $('colorInput').value = '';
+    show('colorDrop'); $('colorThumbRow').style.display = 'none';
+    hide('colorBgBox');
+  };
+
+  async function colorRedraw() {
+    if (!colorImgEl) return;
+    const c = $('colorCanvas');
+    c.width = colorImgEl.naturalWidth; c.height = colorImgEl.naturalHeight;
+    const ctx = c.getContext('2d');
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = colorSel; ctx.fillRect(0, 0, c.width, c.height); // fondo elegido
+    ctx.drawImage(colorImgEl, 0, 0);                                  // foto encima
+    const my = ++colorToken;
+    const dl = $('colorDownload'); dl.style.display = 'none';
+    $('colorNewSize').textContent = 'optimizando…';
+    const { blob, mime } = await encodeMismoPeso(c, colorMime, colorFile.size);
+    if (my !== colorToken) return; // otro color seleccionado mientras tanto
+    const ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
+    if (colorUrl) URL.revokeObjectURL(colorUrl);
+    colorUrl = URL.createObjectURL(blob);
+    dl.href = colorUrl; dl.download = baseName(colorFile.name) + '-fondo.' + ext;
+    $('colorNewSize').textContent = kb(blob.size);
+    dl.style.display = '';
+  }
+
+  // ==================================================================
+  // =========================  AMPLIAR FOTO  ========================
+  // ==================================================================
+  let ampFile = null, ampImgEl = null, ampFactor = 2, ampMime = 'image/png',
+      ampBusy = false, ampUrl = null, ampSrcUrl = null;
+  const AMP_MAX = 8000; // límite de seguridad para el lado mayor (px)
+
+  window.ampSetFactor = (btn, f) => {
+    ampFactor = f; segActivate('ampFactorSeg', btn);
+    if (ampImgEl) ampActualizarNuevo();
+  };
+
+  function ampActualizarNuevo() {
+    if (!ampImgEl) return;
+    let tw = Math.round(ampImgEl.naturalWidth * ampFactor);
+    let th = Math.round(ampImgEl.naturalHeight * ampFactor);
+    const m = Math.max(tw, th);
+    if (m > AMP_MAX) { const k = AMP_MAX / m; tw = Math.round(tw * k); th = Math.round(th * k); }
+    $('ampNewDims').textContent = tw + '×' + th + ' px';
+  }
+
+  function ampPick(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type) && !/\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)) {
+      toast('Elige una imagen (PNG, JPG o WebP)'); return;
+    }
+    ampFile = file;
+    let t = file.type;
+    if (!/^image\/(png|jpeg|webp)$/.test(t)) {
+      t = /\.jpe?g$/i.test(file.name) ? 'image/jpeg' : /\.webp$/i.test(file.name) ? 'image/webp' : 'image/png';
+    }
+    ampMime = t;
+    $('ampName').textContent = file.name;
+    if (ampSrcUrl) URL.revokeObjectURL(ampSrcUrl);
+    ampSrcUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      ampImgEl = img;
+      $('ampOrigDims').textContent = img.naturalWidth + '×' + img.naturalHeight;
+      $('ampPreview').src = ampSrcUrl;
+      hide('ampDrop'); $('ampThumbRow').style.display = 'flex';
+      hide('ampNewWrap'); hide('ampDownload'); hide('ampProgressCard');
+      $('ampRun').disabled = false;
+      ampActualizarNuevo();
+    };
+    img.onerror = () => { toast('No se pudo leer la imagen.'); };
+    img.src = ampSrcUrl;
+  }
+  window.ampReset = () => {
+    ampFile = null; ampImgEl = null; $('ampInput').value = '';
+    show('ampDrop'); $('ampThumbRow').style.display = 'none';
+    $('ampRun').disabled = true; hide('ampProgressCard');
+  };
+
+  // Ampliación por pasos (x2 sucesivos con suavizado alto) → mejor calidad
+  // que un único salto grande.
+  function ampliarCanvas(img, tw, th) {
+    let cur = document.createElement('canvas');
+    cur.width = img.naturalWidth; cur.height = img.naturalHeight;
+    cur.getContext('2d').drawImage(img, 0, 0);
+    while (cur.width < tw || cur.height < th) {
+      const nw = Math.min(tw, cur.width * 2), nh = Math.min(th, cur.height * 2);
+      const nx = document.createElement('canvas'); nx.width = nw; nx.height = nh;
+      const ctx = nx.getContext('2d');
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(cur, 0, 0, nw, nh);
+      cur = nx;
+    }
+    return cur;
+  }
+
+  window.ampProcesar = async function () {
+    if (ampBusy || !ampImgEl) return;
+    ampBusy = true; $('ampRun').disabled = true;
+    show('ampProgressCard'); hide('ampNewWrap'); hide('ampDownload');
+    setBar('ampBar', 'ampPct', 'ampStatus', 20, 'Ampliando…');
+    try {
+      let tw = Math.round(ampImgEl.naturalWidth * ampFactor);
+      let th = Math.round(ampImgEl.naturalHeight * ampFactor);
+      const m = Math.max(tw, th);
+      if (m > AMP_MAX) { const k = AMP_MAX / m; tw = Math.round(tw * k); th = Math.round(th * k); toast('Se limitó el tamaño para evitar errores de memoria.'); }
+      await new Promise(r => setTimeout(r, 30)); // deja pintar la barra
+      const canvas = ampliarCanvas(ampImgEl, tw, th);
+      setBar('ampBar', 'ampPct', 'ampStatus', 85, 'Generando archivo…');
+      const mime = ampMime === 'image/png' ? 'image/png' : ampMime;
+      const q = mime === 'image/png' ? undefined : 0.92;
+      let blob = await new Promise(res => canvas.toBlob(res, mime, q));
+      let ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
+      if (!blob) { blob = await new Promise(res => canvas.toBlob(res, 'image/png')); ext = 'png'; }
+      if (ampUrl) URL.revokeObjectURL(ampUrl);
+      ampUrl = URL.createObjectURL(blob);
+      $('ampPreview').src = ampUrl;
+      const dl = $('ampDownload'); dl.href = ampUrl; dl.download = baseName(ampFile.name) + '-ampliada.' + ext;
+      $('ampNewDims').textContent = tw + '×' + th + ' px';
+      $('ampNewSize').textContent = kb(blob.size);
+      $('ampNewWrap').style.display = ''; dl.style.display = '';
+      setBar('ampBar', 'ampPct', 'ampStatus', 100, '¡Listo! Descarga tu foto.');
+    } catch (e) {
+      console.error(e);
+      setBar('ampBar', 'ampPct', 'ampStatus', 0, 'Error: ' + (e.message || e));
+      toast('❌ ' + (e.message || 'Falló la ampliación'));
+      $('ampRun').disabled = false;
+    } finally {
+      ampBusy = false;
+    }
+  };
+
+  // --------------------- Cableado de inputs/drag&drop ---------------------
+  function wireDrop(zoneId, onFile) {
+    const z = $(zoneId); if (!z) return;
+    ['dragenter', 'dragover'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.add('dragover'); }));
+    ['dragleave', 'dragend', 'drop'].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); z.classList.remove('dragover'); }));
+    z.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) onFile(f); });
+  }
+
+  function init() {
+    renderLauncher();
+    $('ocrInput').addEventListener('change', e => ocrPick(e.target.files[0]));
+    $('imgInput').addEventListener('change', e => imgPick(e.target.files[0]));
+    $('fondoInput').addEventListener('change', e => fondoPick(e.target.files[0]));
+    $('colorInput').addEventListener('change', e => colorPick(e.target.files[0]));
+    $('ampInput').addEventListener('change', e => ampPick(e.target.files[0]));
+    wireDrop('ocrDrop', ocrPick);
+    wireDrop('imgDrop', imgPick);
+    wireDrop('fondoDrop', fondoPick);
+    wireDrop('colorDrop', colorPick);
+    wireDrop('ampDrop', ampPick);
+    // Estado inicial del historial para el botón "atrás".
+    try { history.replaceState({ view: 'homeLauncher' }, ''); } catch (_) {}
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
