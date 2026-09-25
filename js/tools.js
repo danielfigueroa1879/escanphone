@@ -682,7 +682,7 @@
     if (ampImgEl) ampActualizarAviso();
   };
   const AMP_MAX = 8000;   // límite de seguridad para el lado mayor de SALIDA (px)
-  const AMP_MAX_IN = 2000; // tope del lado mayor de ENTRADA para la IA (px)
+  const AMP_MAX_IN = 1000; // tope del lado mayor de ENTRADA para la IA (px)
 
   window.ampSetFactor = (btn, f) => {
     ampFactor = f; segActivate('ampFactorSeg', btn);
@@ -767,19 +767,33 @@
     return cur;
   }
 
-  // Ampliación con IA (super-resolución ESRGAN "medium", modelo nativo por
-  // factor → una sola pasada). Usa WebGL (GPU) si está disponible y procesa
-  // por parches grandes para ir más rápido. progreso: 0..1.
+  // Ampliación con IA (super-resolución ESRGAN, modelo nativo por factor →
+  // una sola pasada). REQUIERE GPU (WebGL); si no, se usa el modo rápido.
+  // Procesa por parches PEQUEÑOS para no congelar la pantalla (la barra de
+  // progreso avanza entre parches). progreso: 0..1.
+  function hayWebGL() {
+    try {
+      const c = document.createElement('canvas');
+      return !!(c.getContext('webgl') || c.getContext('experimental-webgl'));
+    } catch (_) { return false; }
+  }
+
   async function ampliarIA(img, factor, prog) {
+    if (!hayWebGL()) throw new Error('sin-webgl'); // sin GPU → modo rápido al instante (sin descargar nada)
     await cargarScript(CDN.tfjs);
-    // Backend WebGL (GPU) para acelerar; si no, el que haya.
+    // Backend WebGL (GPU). Si no hay GPU, la IA congelaría el navegador,
+    // así que se cae al modo rápido.
+    let backend = '';
     try {
       if (window.tf) {
         await window.tf.ready();
         if (window.tf.getBackend() !== 'webgl') { try { await window.tf.setBackend('webgl'); } catch (_) {} }
         await window.tf.ready();
+        backend = window.tf.getBackend();
       }
     } catch (_) {}
+    if (backend !== 'webgl') throw new Error('sin-webgl');
+
     const esc = Math.max(2, Math.min(4, Math.round(factor))); // modelo nativo x2/x3/x4
     const modelo = CDN.upBases[ampCalidad] || CDN.upBases.medium;
     await cargarScript(modelo.url + 'x' + esc + '/index.min.js');
@@ -787,17 +801,17 @@
     const Model = window[modelo.g + esc + 'x'];
     if (!window.Upscaler || !Model) throw new Error('IA no disponible');
 
-    // Tope de entrada: si la foto es enorme, se reduce antes de la IA para
-    // que no se congele. El tamaño final se logra igual con el lienzo.
+    // Tope de entrada: se reduce la foto antes de la IA para acotar el
+    // trabajo; el tamaño final se logra igual con el lienzo.
     let entrada = img;
     const maxSide = Math.max(img.naturalWidth, img.naturalHeight);
     if (maxSide > AMP_MAX_IN) {
       const k = AMP_MAX_IN / maxSide;
       entrada = redimensionar(img, Math.round(img.naturalWidth * k), Math.round(img.naturalHeight * k));
-      toast('Foto muy grande: se optimizó la entrada para la IA.');
     }
     const inSide = Math.max(entrada.width || entrada.naturalWidth, entrada.height || entrada.naturalHeight);
-    const opts = inSide > 384 ? { patchSize: 128, padding: 6 } : {}; // parches grandes = más rápido
+    // Parches pequeños: cada inferencia es corta → la UI no se congela.
+    const opts = inSide > 96 ? { patchSize: 64, padding: 4 } : {};
 
     const upscaler = new window.Upscaler({ model: Model });
     let cur;
@@ -842,13 +856,16 @@
     try {
       let canvas;
       if (usarIA) {
-        setBar('ampBar', 'ampPct', 'ampStatus', 3, 'Cargando IA…');
+        setBar('ampBar', 'ampPct', 'ampStatus', 3, 'Preparando IA…');
         try {
           canvas = await ampliarIA(ampImgEl, ampFactor,
             r => setBar('ampBar', 'ampPct', 'ampStatus', Math.min(95, 5 + r * 90), 'Mejorando con IA…'));
         } catch (e) {
           console.error(e);
-          toast('La IA no está disponible ahora; se usó el modo rápido.');
+          toast(e && e.message === 'sin-webgl'
+            ? 'Tu dispositivo no acelera la IA (sin GPU/WebGL); se usó el modo rápido.'
+            : 'La IA no está disponible ahora; se usó el modo rápido.');
+          setBar('ampBar', 'ampPct', 'ampStatus', 40, 'Ampliando (modo rápido)…');
           canvas = ampliarCanvas(ampImgEl, tw, th);
         }
       } else {
