@@ -60,6 +60,8 @@
   const HERRAMIENTAS = [
     { id: 'appEscaner', emoji: '📄', title: 'Escáner de Documentos',
       desc: 'Combina frente y reverso o centra un documento para imprimir.' },
+    { id: 'appAmpliar', emoji: '🔍', title: 'Ampliar foto', badge: 'IA',
+      desc: 'Agranda la foto 2×, 3× o 4× con IA (súper resolución).' },
     { id: 'appPDF', emoji: '📚', title: 'Herramientas PDF', badge: 'Suite',
       desc: 'OCR, unir, organizar, dividir, comprimir y convertir PDF. Todo local.' },
     { id: 'appImagen', emoji: '🗜️', title: 'Convertir / Comprimir a WebP',
@@ -68,8 +70,6 @@
       desc: 'Elimina el fondo de una foto y déjala transparente.' },
     { id: 'appColor', emoji: '🎨', title: 'Cambiar fondo de color',
       desc: 'Pon fondo blanco, azul, verde o rojo detrás de la foto.' },
-    { id: 'appAmpliar', emoji: '🔍', title: 'Ampliar foto', badge: 'IA',
-      desc: 'Agranda la foto 2×, 3× o 4× con IA (súper resolución).' },
     { soon: true, emoji: '➕', title: 'Más herramientas', desc: 'Se irán agregando pronto.' }
   ];
   function renderLauncher() {
