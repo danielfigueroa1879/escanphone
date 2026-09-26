@@ -860,20 +860,31 @@
     for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > cut) { hi = v; break; } }
     if (hi - lo < 32) { lo = 0; hi = 255; }
     const range = hi - lo || 1;
+    // Ganancia de contraste LIMITADA para no multiplicar el ruido (antes un
+    // rango estrecho amplificaba mucho el grano y ensuciaba la foto).
+    const gain = Math.min(255 / range, 1.22);
     const lut = new Uint8Array(256);
     for (let v = 0; v < 256; v++) {
-      let n = (v - lo) / range * 255;
+      let n = (v - lo) * gain;
       lut[v] = n < 0 ? 0 : n > 255 ? 255 : n;
     }
-    const sat = 1.08;   // saturación suave
+    const sat = 1.05;   // saturación suave
+    // Enfoque INTELIGENTE: si la diferencia con el desenfoque es pequeña, es
+    // ruido → se atenúa (limpia el grano); si es grande, es un borde real → se
+    // enfoca. Así la foto queda LIMPIA y a la vez nítida (sin halos sucios).
+    const NT = 5;        // umbral de ruido (diferencias menores se suavizan)
+    const clean = (v, bl) => {
+      const hf = v - bl;
+      return Math.abs(hf) < NT ? bl + hf * 0.4 : v + amount * hf;
+    };
 
-    // 3) Una sola pasada: enfoque + auto-contraste + saturación por píxel.
+    // 3) Una sola pasada: limpieza+enfoque, auto-contraste y saturación.
     for (let i = 0; i < d.length; i += 4) {
       let r = d[i], g = d[i + 1], b = d[i + 2];
       if (blurData) {
-        r += amount * (r - blurData[i]);
-        g += amount * (g - blurData[i + 1]);
-        b += amount * (b - blurData[i + 2]);
+        r = clean(r, blurData[i]);
+        g = clean(g, blurData[i + 1]);
+        b = clean(b, blurData[i + 2]);
       }
       r = lut[r < 0 ? 0 : r > 255 ? 255 : r | 0];
       g = lut[g < 0 ? 0 : g > 255 ? 255 : g | 0];
@@ -951,30 +962,37 @@
     for (let v = 255; v >= 0; v--) { acc += hist[v]; if (acc > cut) { hi = v; break; } }
     if (hi - lo < 24) { lo = 0; hi = 255; }
     const range = hi - lo || 1;
+    const gain = Math.min(255 / range, 1.22);  // contraste limitado (menos ruido)
     const lut = new Uint8Array(256);
     for (let v = 0; v < 256; v++) {
-      let n = (v - lo) / range * 255;
+      let n = (v - lo) * gain;
       lut[v] = n < 0 ? 0 : n > 255 ? 255 : n;
     }
 
-    // Fuerzas del realce por escala. ULTRA sube todas las ganancias.
-    const kNano  = ultra ? 1.60 : 0;      // micro-detalle extremo (solo ultra)
-    const kMicro = ultra ? 2.30 : 1.35;   // detalle fino (poros, pestañas, texto)
-    const kMedio = ultra ? 0.95 : 0.55;   // definición media
-    const kClar  = ultra ? 0.60 : 0.35;   // contraste local (clarity)
-    const sat    = ultra ? 1.16 : 1.10;
-    // Umbral anti-ruido (solo ultra): ignora diferencias minúsculas en las
-    // frecuencias más finas para no amplificar el grano en zonas planas.
-    const nz = ultra ? 3 : 0;
+    // Fuerzas del realce por escala. Calibradas para DETALLE NÍTIDO pero LIMPIO
+    // (sin halos ni ruido). Antes eran demasiado altas y ensuciaban la imagen.
+    const kNano  = ultra ? 0.85 : 0;      // micro-detalle extremo (solo ultra)
+    const kMicro = ultra ? 1.15 : 0.85;   // detalle fino (poros, pestañas, texto)
+    const kMedio = ultra ? 0.55 : 0.42;   // definición media
+    const kClar  = ultra ? 0.40 : 0.30;   // contraste local (clarity)
+    const sat    = ultra ? 1.08 : 1.06;
+    // Umbral anti-ruido: en las escalas finas, las diferencias pequeñas son
+    // grano → se ATENÚAN (no se amplifican), y solo se enfocan los bordes
+    // reales. Esto deja la imagen limpia y a la vez definida.
+    const NT = 6;
+    // Aporte de cada escala con umbral anti-ruido: si la diferencia es pequeña
+    // (grano de zona plana) se atenúa; si es un borde real, se realza. Aplicado
+    // a TODAS las escalas → detalle nítido pero imagen limpia.
+    const add = (df, k) => (Math.abs(df) < NT ? k * df * 0.2 : k * df);
 
     for (let i = 0; i < d.length; i += 4) {
       for (let c = 0; c < 3; c++) {
         const j = i + c;
         let v = d[j];
-        if (nano)  { const df = d[j] - nano[j];  if (df > nz || df < -nz) v += kNano * df; }
-        if (micro) { const df = d[j] - micro[j]; if (df > nz || df < -nz) v += kMicro * df; else v += kMicro * df * 0.5; }
-        if (medio)  v += kMedio * (d[j] - medio[j]);
-        if (grande) v += kClar  * (d[j] - grande[j]);
+        if (nano)   v += add(d[j] - nano[j], kNano);
+        if (micro)  v += add(d[j] - micro[j], kMicro);
+        if (medio)  v += add(d[j] - medio[j], kMedio);
+        if (grande) v += add(d[j] - grande[j], kClar);
         v = lut[v < 0 ? 0 : v > 255 ? 255 : v | 0];
         d[j] = v;
       }
