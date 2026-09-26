@@ -795,7 +795,7 @@
     $('ampRun').disabled = true;
     if ($('ampHD')) $('ampHD').disabled = true;
     if ($('ampUltra')) $('ampUltra').disabled = true;
-    hide('ampProgressCard');
+    hide('ampProgressCard'); hide('ampCompare');
   };
 
   function srcToImage(src) {
@@ -1070,6 +1070,27 @@
     return redimensionar(cur, tw, th);
   }
 
+  // Coloca la línea del comparador en un porcentaje [0..100].
+  function ampSetCmp(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    const before = $('ampCmpBefore'), div = $('ampCmpDivider');
+    if (before) before.style.clipPath = 'inset(0 ' + (100 - pct) + '% 0 0)';
+    if (div) div.style.left = pct + '%';
+  }
+  // Conecta el arrastre de la línea (una sola vez).
+  function wireCmp() {
+    const cmp = $('ampCmp'); if (!cmp || cmp._wired) return; cmp._wired = true;
+    let drag = false;
+    const move = e => {
+      const rect = cmp.getBoundingClientRect();
+      const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+      ampSetCmp((cx - rect.left) / rect.width * 100);
+    };
+    cmp.addEventListener('pointerdown', e => { drag = true; try { cmp.setPointerCapture(e.pointerId); } catch (_) {} move(e); e.preventDefault(); });
+    cmp.addEventListener('pointermove', e => { if (drag) move(e); });
+    window.addEventListener('pointerup', () => { drag = false; });
+  }
+
   async function ampFinalizar(canvas) {
     const mime = ampMime === 'image/png' ? 'image/png' : ampMime;
     const q = mime === 'image/png' ? undefined : 0.92;
@@ -1083,12 +1104,21 @@
     $('ampNewDims').textContent = canvas.width + '×' + canvas.height + ' px';
     $('ampNewSize').textContent = kb(blob.size);
     $('ampNewWrap').style.display = ''; dl.style.display = '';
+    // Comparador antes/después: izquierda = original, derecha = resultado.
+    const after = $('ampCmpAfter'), before = $('ampCmpBefore');
+    if (after && before) {
+      after.src = ampUrl;
+      before.src = ampSrcUrl;
+      show('ampCompare');
+      wireCmp();
+      ampSetCmp(50);
+    }
   }
 
   window.ampProcesar = async function () {
     if (ampBusy || !ampImgEl) return;
     ampBusy = true; $('ampRun').disabled = true;
-    show('ampProgressCard'); hide('ampNewWrap'); hide('ampDownload');
+    show('ampProgressCard'); hide('ampNewWrap'); hide('ampDownload'); hide('ampCompare');
     let tw = Math.round(ampImgEl.naturalWidth * ampFactor);
     let th = Math.round(ampImgEl.naturalHeight * ampFactor);
     const m = Math.max(tw, th);
@@ -1137,7 +1167,7 @@
     const btnHD = $('ampHD'), btnUltra = $('ampUltra');
     if (btnHD) btnHD.disabled = true;
     if (btnUltra) btnUltra.disabled = true;
-    show('ampProgressCard'); hide('ampNewWrap'); hide('ampDownload');
+    show('ampProgressCard'); hide('ampNewWrap'); hide('ampDownload'); hide('ampCompare');
     let tw = Math.round(ampImgEl.naturalWidth * ampFactor);
     let th = Math.round(ampImgEl.naturalHeight * ampFactor);
     const m = Math.max(tw, th);
