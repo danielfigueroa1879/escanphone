@@ -737,6 +737,29 @@
       </button>
     </div>
 
+    <!-- Barra de progreso: DEBAJO de la imagen -->
+    <div class="amp-progress" id="ampProgressCard" style="display:none;">
+      <div class="bar-wrap">
+        <div class="bar"><span id="ampBar"></span></div>
+        <div class="bar-meta">
+          <span id="ampStatus">Preparando…</span>
+          <span class="pct" id="ampPct">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comparador Antes/Después con línea deslizante -->
+    <div class="amp-compare" id="ampCompare" style="display:none;">
+      <div class="cmp" id="ampCmp">
+        <img class="cmp-after" id="ampCmpAfter" alt="Después">
+        <img class="cmp-before" id="ampCmpBefore" alt="Antes">
+        <div class="cmp-divider" id="ampCmpDivider"><span class="cmp-handle">⟺</span></div>
+        <span class="cmp-tag cmp-tag-l">Antes</span>
+        <span class="cmp-tag cmp-tag-r">Después</span>
+      </div>
+      <p class="name-hint" style="margin:8px 2px 0; text-align:center;">Desliza la línea: izquierda = original · derecha = mejorada.</p>
+    </div>
+
     <div style="margin-top:14px;">
       <div class="field-row">
         <div class="fr-label">Mejorar con IA
@@ -779,16 +802,6 @@
     </div>
     <p class="name-hint" style="margin:12px 2px 0;"><b>✨ Máxima definición / ⚡ Ultra definición:</b> exprimen al máximo el detalle real de la foto (nitidez fina, contraste local y textura) para que al hacer zoom se vea mucho más definida. <b>Ultra</b> aplica un realce más fuerte con una segunda pasada de micro-detalle. Ambos son instantáneos, sin descargas ni GPU. No inventan detalle que la cámara no captó: para súper-resolución real deja activada “Mejorar con IA”.</p>
     <p class="name-hint" style="margin:8px 2px 0;">La IA usa la GPU (WebGL) del dispositivo y descarga un modelo la primera vez (~10 MB). Si no hay GPU o falla, cambia solo al modo rápido, que agranda y además realza nitidez y color al instante (sin descargas). La barra avanza mientras procesa.</p>
-  </div>
-
-  <div class="card" id="ampProgressCard" style="display:none;">
-    <div class="bar-wrap">
-      <div class="bar"><span id="ampBar"></span></div>
-      <div class="bar-meta">
-        <span id="ampStatus">Preparando…</span>
-        <span class="pct" id="ampPct">0%</span>
-      </div>
-    </div>
   </div>
 
   <footer class="footer">
