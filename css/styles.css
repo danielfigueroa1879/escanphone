@@ -1448,7 +1448,10 @@
   .appbar {
     position: sticky; top: 0; z-index: 60;
     display: flex; align-items: center; gap: 10px;
-    padding: 10px 14px;
+    /* Márgenes negativos para cancelar el padding del body y quedar A TOPE
+       arriba y a ancho completo (sin espacio arriba en PC ni en móvil). */
+    margin: -16px -12px 14px;
+    padding: 10px 16px;
     padding-top: calc(10px + env(safe-area-inset-top, 0px));
     /* Blanco semitransparente con efecto vidrio (modo claro) */
     background: rgba(255,255,255,0.72);
@@ -1753,3 +1756,11 @@ body.dark .amp-aviso { background: rgba(255, 65, 71, 0.12); border-color: rgba(2
   }
   .cmp-tag-l { left: 8px; }
   .cmp-tag-r { right: 8px; }
+
+  /* En PC (pantallas anchas) el comparador y la vista previa se centran y
+     limitan su ancho para verse equilibrados y profesionales, no estirados. */
+  @media (min-width: 720px) {
+    .amp-compare { max-width: 560px; margin-left: auto; margin-right: auto; }
+    .thumb-card .thumb-img { max-height: 62vh; }
+    .thumb-card .thumb-img img { max-height: 62vh; width: auto; margin: 0 auto; }
+  }
