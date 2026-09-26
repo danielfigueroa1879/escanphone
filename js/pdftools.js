@@ -937,26 +937,33 @@
   // Extrae texto digital con pdf.js; si el PDF es escaneado, usa OCR. Arma un
   // DOCX (OOXML) con JSZip. No promete diseño idéntico en documentos complejos.
   // ====================================================================
-  const p2w = { file: null, token: null };
+  const p2w = { file: null, token: null, mode: 'fiel', lang: 'spa+eng' };
   function buildPdf2Word() {
-    crearVista('pdfPdf2Word', '📝', 'PDF a Word', 'Genera un DOCX editable. Usa OCR si el PDF es escaneado.',
+    crearVista('pdfPdf2Word', '📝', 'PDF a Word', 'Genera un DOCX editable respetando el diseño original.',
       '<div class="card">' +
         dropHTML('p2w', 'application/pdf', false, 'Sube un PDF', 'Toca o arrastra el PDF') +
         '<div id="p2wPanel" style="display:none; margin-top:12px;">' +
-          '<div class="field-row"><div class="fr-label">Si es escaneado (OCR)<small>Idioma para reconocer texto</small></div>' +
+          '<div class="field-row"><div class="fr-label">Modo<small>Cómo reconstruir el documento</small></div>' +
+            '<div class="seg" id="p2wModeSeg"><button type="button" class="active" data-m="fiel">Diseño fiel</button>' +
+            '<button type="button" data-m="simple">Texto simple</button></div></div>' +
+          '<div class="field-row"><div class="fr-label">Idioma (OCR)<small>Para PDF escaneados</small></div>' +
             '<div class="seg" id="p2wLangSeg"><button type="button" class="active" data-l="spa+eng">ES + EN</button>' +
             '<button type="button" data-l="spa">Español</button><button type="button" data-l="eng">English</button></div></div>' +
-          '<div class="field-row"><div class="fr-label">Incluir imágenes de página<small>Recomendado para documentos escaneados: conserva el aspecto</small></div>' +
+          '<div class="field-row" id="p2wImgRow" style="display:none;"><div class="fr-label">Incluir imágenes de página<small>Incrusta cada página como imagen</small></div>' +
             '<label class="switch"><input type="checkbox" id="p2wImg"><span class="track"></span></label></div>' +
-          '<p class="name-hint" style="margin:6px 2px 0;">Conserva párrafos, títulos y saltos de página. Con imágenes activado, cada página se incrusta como imagen y debajo va el texto (OCR o extraído) editable. Tablas y columnas complejas pueden simplificarse.</p>' +
+          '<p class="name-hint" style="margin:6px 2px 0;"><b>Diseño fiel (recomendado):</b> reconstruye cada página con la imagen original de fondo (conserva <b>firmas, sellos, logos y el diseño exacto</b>) y coloca el texto <b>editable en su posición, tamaño y color reales</b> encima. <b>Texto simple:</b> extrae el texto en párrafos (reflujo), útil si solo quieres editar el contenido.</p>' +
+          '<p class="name-hint" style="margin:6px 2px 0; opacity:.85;">Nota: la fuente se aproxima a una equivalente (Arial/Times/Courier). El diseño fiel mantiene ubicación y aspecto; documentos con tablas o columnas muy complejas pueden requerir ajustes menores.</p>' +
           '<button class="btn brand full" id="p2wRun" style="margin-top:14px;">📝 Convertir a Word (.docx)</button>' +
           '<a class="btn primary full" id="p2wDl" style="display:none; margin-top:10px;">⬇ Descargar .docx</a>' +
         '</div>' +
       '</div>' + progHTML('p2w'));
     wireDrop('p2w', fs => cargar(fs[0]));
-    let lang = 'spa+eng';
-    $('p2wLangSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { lang = b.dataset.l; $('p2wLangSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b)); }));
-    $('p2wRun').addEventListener('click', () => runPdf2Word(lang));
+    $('p2wModeSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      p2w.mode = b.dataset.m; $('p2wModeSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+      $('p2wImgRow').style.display = p2w.mode === 'simple' ? '' : 'none';
+    }));
+    $('p2wLangSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { p2w.lang = b.dataset.l; $('p2wLangSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b)); }));
+    $('p2wRun').addEventListener('click', () => runPdf2Word(p2w.lang));
     $('p2wCancel').addEventListener('click', () => { if (p2w.token) p2w.token.cancelado = true; });
     async function cargar(file) {
       if (!file) return;
@@ -1069,57 +1076,217 @@
     const w = c.width, h = c.height; c.width = c.height = 0;
     return { type: 'img', bytes, w, h, ext: 'jpg' };
   }
+
+  // -------------------- Modo "Diseño fiel" (overlay) --------------------
+  const hex2 = n => ('0' + Math.max(0, Math.min(255, n | 0)).toString(16)).slice(-2);
+  function famDe(styles, fontName) {
+    const ff = ((styles && styles[fontName] && styles[fontName].fontFamily) || '') + ' ' + (fontName || '');
+    if (/serif/i.test(ff) && !/sans/i.test(ff)) return 'Times New Roman';
+    if (/mono|courier|consol/i.test(ff)) return 'Courier New';
+    return 'Arial';
+  }
+  // Color de texto = píxel más oscuro dentro de la caja (en el canvas renderizado).
+  function colorTexto(data, W, H, px0, py0, px1, py1) {
+    let best = 999, br = 0, bg = 0, bb = 0;
+    const xa = Math.max(0, px0 | 0), xb = Math.min(W - 1, px1 | 0);
+    const ya = Math.max(0, py0 | 0), yb = Math.min(H - 1, py1 | 0);
+    for (let y = ya; y <= yb; y += 2) for (let x = xa; x <= xb; x += 2) {
+      const o = (y * W + x) * 4;
+      const lum = 0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2];
+      if (lum < best) { best = lum; br = data[o]; bg = data[o + 1]; bb = data[o + 2]; }
+    }
+    if (best > 190) return '000000'; // no se detectó tinta clara → negro por defecto
+    return hex2(br) + hex2(bg) + hex2(bb);
+  }
+  // Extrae palabras con bbox del resultado de tesseract (v5: blocks anidados).
+  function palabrasOCR(data) {
+    const words = [];
+    (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p =>
+      (p.lines || []).forEach(l => (l.words || []).forEach(w => {
+        if (w.text && w.text.trim() && w.bbox) words.push({ text: w.text, bbox: w.bbox });
+      }))));
+    if (!words.length && Array.isArray(data.words)) data.words.forEach(w => { if (w.text && w.text.trim() && w.bbox) words.push({ text: w.text, bbox: w.bbox }); });
+    return words;
+  }
+  // Construye las "cajas" de texto de una página con texto digital.
+  async function cajasDigital(pdf, num) {
+    const page = await pdf.getPage(num);
+    const vp1 = page.getViewport({ scale: 1 });
+    const Wpt = vp1.width, Hpt = vp1.height;
+    const S = Math.min(2.5, Math.max(1, 1500 / Wpt));
+    const vp = page.getViewport({ scale: S });
+    const c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    const data = ctx.getImageData(0, 0, c.width, c.height).data; const CW = c.width, CH = c.height;
+    const tc = await page.getTextContent();
+    const styles = tc.styles || {};
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.72));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const cajas = [];
+    (tc.items || []).forEach(it => {
+      const s = it.str || ''; if (!s.trim()) return;
+      const size = it.height || Math.hypot(it.transform[2], it.transform[3]) || 10;
+      const x = it.transform[4], yb = it.transform[5];
+      const wpt = it.width || s.length * size * 0.5;
+      const topPt = Hpt - (yb + size * 0.8);
+      const px0 = x * S, px1 = (x + wpt) * S;
+      const py0 = (Hpt - (yb + size * 0.9)) * S, py1 = (Hpt - (yb - size * 0.2)) * S;
+      const color = colorTexto(data, CW, CH, px0, py0, px1, py1);
+      const bold = /bold|black|heavy/i.test(((styles[it.fontName] && styles[it.fontName].fontFamily) || '') + ' ' + (it.fontName || ''));
+      cajas.push({ xPt: x, yPt: Math.max(0, topPt), wPt: wpt + 2, hPt: size * 1.3, sizePt: size, family: famDe(styles, it.fontName), bold, color, fill: 'FFFFFF', text: s });
+    });
+    c.width = c.height = 0;
+    return { wPt: Wpt, hPt: Hpt, bytes, cajas };
+  }
+  // Cajas de una página escaneada usando OCR (posición por palabra).
+  async function cajasOCR(pdf, num, worker) {
+    const page = await pdf.getPage(num);
+    const vp1 = page.getViewport({ scale: 1 });
+    const Wpt = vp1.width, Hpt = vp1.height;
+    const S = Math.min(3, Math.max(1.5, 2000 / Wpt));
+    const vp = page.getViewport({ scale: S });
+    const c = document.createElement('canvas'); c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.72));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const { data } = await worker.recognize(c, {}, { blocks: true });
+    const cajas = palabrasOCR(data).map(w => {
+      const b = w.bbox, h = (b.y1 - b.y0);
+      return { xPt: b.x0 / S, yPt: b.y0 / S, wPt: (b.x1 - b.x0) / S + 1, hPt: h / S, sizePt: (h / S) * 0.8, family: 'Arial', bold: false, color: '000000', fill: 'FFFFFF', text: w.text };
+    });
+    c.width = c.height = 0;
+    return { wPt: Wpt, hPt: Hpt, bytes, cajas };
+  }
+  // Construye un DOCX que reproduce el diseño: imagen de página al fondo +
+  // texto editable posicionado (frames absolutos anclados a la página).
+  async function construirDocxFiel(paginas) {
+    const JSZip = await ensureJSZip();
+    const zip = new JSZip();
+    const media = []; const rels = []; let imgN = 0, drawId = 3000;
+    const NS = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"';
+    function bgImg(pg) {
+      imgN++; const name = 'image' + imgN + '.jpg'; media.push({ name, bytes: pg.bytes });
+      const rid = 'rIdImg' + imgN; rels.push({ id: rid, target: 'media/' + name });
+      const cx = Math.round(pg.wPt * 12700), cy = Math.round(pg.hPt * 12700); const did = drawId++;
+      return '<w:r><w:drawing><wp:anchor behindDoc="1" allowOverlap="1" layoutInCell="1" locked="0" relativeHeight="0" simplePos="0" distT="0" distB="0" distL="0" distR="0">' +
+        '<wp:simplePos x="0" y="0"/>' +
+        '<wp:positionH relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionH>' +
+        '<wp:positionV relativeFrom="page"><wp:posOffset>0</wp:posOffset></wp:positionV>' +
+        '<wp:extent cx="' + cx + '" cy="' + cy + '"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/>' +
+        '<wp:docPr id="' + did + '" name="Fondo ' + did + '"/><wp:cNvGraphicFramePr/>' +
+        '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+        '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="' + did + '" name="Fondo"/><pic:cNvPicPr/></pic:nvPicPr>' +
+        '<pic:blipFill><a:blip r:embed="' + rid + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+        '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+        '</pic:pic></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r>';
+    }
+    function frame(c) {
+      const wTw = Math.max(60, Math.round(c.wPt * 20)), hTw = Math.max(60, Math.round(c.hPt * 20));
+      const xTw = Math.max(0, Math.round(c.xPt * 20)), yTw = Math.max(0, Math.round(c.yPt * 20));
+      const sz = Math.max(6, Math.round(c.sizePt * 2));
+      const fam = esc(c.family || 'Arial');
+      return '<w:p><w:pPr>' +
+        '<w:framePr w:w="' + wTw + '" w:h="' + hTw + '" w:hRule="exact" w:wrap="none" w:vAnchor="page" w:hAnchor="page" w:x="' + xTw + '" w:y="' + yTw + '"/>' +
+        '<w:shd w:val="clear" w:color="auto" w:fill="' + (c.fill || 'FFFFFF') + '"/>' +
+        '<w:spacing w:after="0" w:line="240" w:lineRule="auto"/><w:rPr><w:sz w:val="' + sz + '"/></w:rPr></w:pPr>' +
+        '<w:r><w:rPr><w:rFonts w:ascii="' + fam + '" w:hAnsi="' + fam + '"/>' + (c.bold ? '<w:b/>' : '') +
+        '<w:color w:val="' + (c.color || '000000') + '"/><w:sz w:val="' + sz + '"/></w:rPr>' +
+        '<w:t xml:space="preserve">' + esc(c.text) + '</w:t></w:r></w:p>';
+    }
+    const partes = paginas.map((pg, idx) => {
+      let s = idx > 0 ? '<w:p><w:r><w:br w:type="page"/></w:r></w:p>' : '';
+      s += '<w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>' + bgImg(pg) + '</w:p>';
+      pg.cajas.forEach(c => { s += frame(c); });
+      return s;
+    }).join('');
+    const p0 = paginas[0] || { wPt: 595, hPt: 842 };
+    const pgW = Math.round(p0.wPt * 20), pgH = Math.round(p0.hPt * 20);
+    const documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<w:document ' + NS + '><w:body>' + partes +
+      '<w:sectPr><w:pgSz w:w="' + pgW + '" w:h="' + pgH + '"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr></w:body></w:document>';
+    zip.file('[Content_Types].xml',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Default Extension="jpg" ContentType="image/jpeg"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>');
+    zip.folder('_rels').file('.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
+    const wf = zip.folder('word');
+    wf.file('document.xml', documentXml);
+    wf.folder('_rels').file('document.xml.rels',
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      rels.map(r => '<Relationship Id="' + r.id + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="' + r.target + '"/>').join('') +
+      '</Relationships>');
+    const mf = wf.folder('media');
+    media.forEach(m => mf.file(m.name, m.bytes));
+    return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  }
   async function runPdf2Word(lang) {
     if (!p2w.file) return;
-    const incluirImg = $('p2wImg') && $('p2wImg').checked;
     p2w.token = nuevoToken(); $('p2wRun').disabled = true; $('p2wDl').style.display = 'none';
     let worker = null;
     try {
       const bytes = new Uint8Array(await readAB(p2w.file));
       const pdf = await abrirConPdfjs(bytes);
       const total = pdf.numPages;
-      // 1) Texto digital por página.
-      let totalTexto = 0;
-      const porPagina = [];
-      for (let i = 1; i <= total; i++) {
-        if (p2w.token.cancelado) throw new Error('Cancelado por el usuario.');
-        setProg('p2w', 3 + (i / total) * 40, 'Leyendo texto ' + i + '/' + total + '…', true);
-        const tc = await (await pdf.getPage(i)).getTextContent();
-        const ps = itemsAParrafos(tc);
-        porPagina.push(ps);
-        totalTexto += ps.reduce((a, p) => a + p.text.length, 0);
-      }
-      const escaneado = totalTexto < total * 20; // muy poco texto → escaneado
-      // 2) Si es escaneado, preparar OCR (reutiliza tesseract).
-      if (escaneado) {
-        const Tesseract = await ensureTesseract();
-        worker = await Tesseract.createWorker(lang, 1);
-      }
-      // 3) Construir los bloques del documento.
-      const bloques = [];
-      for (let i = 1; i <= total; i++) {
-        if (p2w.token.cancelado) throw new Error('Cancelado por el usuario.');
-        if (i > 1) bloques.push({ type: 'pagebreak' });
-        setProg('p2w', 45 + (i / total) * 50, (escaneado ? 'OCR' : 'Procesando') + ' página ' + i + '/' + total + '…', true);
-        if (incluirImg) {
-          const baseW = (await pdf.getPage(i)).getViewport({ scale: 1 }).width;
-          bloques.push(await paginaComoImagen(pdf, i, Math.min(1400, baseW * 2)));
+      // Detectar si el PDF trae texto digital (muestreo).
+      setProg('p2w', 5, 'Analizando el documento…', true);
+      const avg = await detectarTextoPdf(pdf);
+      const escaneado = avg < 20;
+      let blob, etq;
+
+      if (p2w.mode === 'fiel') {
+        // ---- Diseño fiel: imagen de fondo + texto posicionado editable ----
+        if (escaneado) { const T = await ensureTesseract(); worker = await T.createWorker(lang, 1); }
+        const paginas = [];
+        for (let i = 1; i <= total; i++) {
+          if (p2w.token.cancelado) throw new Error('Cancelado por el usuario.');
+          setProg('p2w', 8 + (i / total) * 86, (escaneado ? 'OCR + diseño' : 'Reconstruyendo') + ' página ' + i + '/' + total + '…', true);
+          paginas.push(escaneado ? await cajasOCR(pdf, i, worker) : await cajasDigital(pdf, i));
         }
-        if (!escaneado) {
-          porPagina[i - 1].forEach(p => bloques.push(Object.assign({ type: 'p' }, p)));
-        } else {
-          const c = await renderPagina(pdf, i, Math.min(2200, (await pdf.getPage(i)).getViewport({ scale: 1 }).width * 2.5));
-          const { data } = await worker.recognize(c);
-          (data.text || '').split(/\n+/).forEach(line => { const t = line.replace(/\s+/g, ' ').trim(); if (t) bloques.push({ type: 'p', text: t }); });
-          c.width = c.height = 0;
+        if (worker) { await worker.terminate(); worker = null; }
+        setProg('p2w', 96, 'Generando .docx…', false);
+        blob = await construirDocxFiel(paginas);
+        etq = escaneado ? '(diseño fiel · OCR)' : '(diseño fiel)';
+      } else {
+        // ---- Texto simple: reflujo de párrafos (+ imágenes opcionales) ----
+        const incluirImg = $('p2wImg') && $('p2wImg').checked;
+        if (escaneado) { const T = await ensureTesseract(); worker = await T.createWorker(lang, 1); }
+        const bloques = [];
+        for (let i = 1; i <= total; i++) {
+          if (p2w.token.cancelado) throw new Error('Cancelado por el usuario.');
+          if (i > 1) bloques.push({ type: 'pagebreak' });
+          setProg('p2w', 8 + (i / total) * 86, (escaneado ? 'OCR' : 'Procesando') + ' página ' + i + '/' + total + '…', true);
+          if (incluirImg) {
+            const baseW = (await pdf.getPage(i)).getViewport({ scale: 1 }).width;
+            bloques.push(await paginaComoImagen(pdf, i, Math.min(1400, baseW * 2)));
+          }
+          if (!escaneado) {
+            itemsAParrafos(await (await pdf.getPage(i)).getTextContent()).forEach(p => bloques.push(Object.assign({ type: 'p' }, p)));
+          } else {
+            const c = await renderPagina(pdf, i, Math.min(2200, (await pdf.getPage(i)).getViewport({ scale: 1 }).width * 2.5));
+            const { data } = await worker.recognize(c);
+            (data.text || '').split(/\n+/).forEach(line => { const t = line.replace(/\s+/g, ' ').trim(); if (t) bloques.push({ type: 'p', text: t }); });
+            c.width = c.height = 0;
+          }
         }
+        if (worker) { await worker.terminate(); worker = null; }
+        if (!bloques.length) bloques.push({ type: 'p', text: '(No se detectó contenido en el documento.)' });
+        setProg('p2w', 96, 'Generando .docx…', false);
+        blob = await construirDocx(bloques);
+        etq = (escaneado ? '(texto · OCR)' : '(texto digital)') + (incluirImg ? ' + imágenes' : '');
       }
-      if (worker) { await worker.terminate(); worker = null; }
-      if (!bloques.length) bloques.push({ type: 'p', text: '(No se detectó contenido en el documento.)' });
-      setProg('p2w', 96, 'Generando .docx…', false);
-      const blob = await construirDocx(bloques);
+
       const dl = $('p2wDl'); dl.href = URL.createObjectURL(blob); dl.download = baseName(p2w.file.name) + '.docx'; dl.style.display = '';
-      const etq = (escaneado ? '(con OCR)' : '(texto digital)') + (incluirImg ? ' + imágenes' : '');
       setProg('p2w', 100, '¡Listo! ' + etq, false);
       toast('✅ Word generado ' + etq);
     } catch (e) {
