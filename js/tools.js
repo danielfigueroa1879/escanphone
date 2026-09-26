@@ -60,8 +60,8 @@
   const HERRAMIENTAS = [
     { id: 'appEscaner', emoji: '📄', title: 'Escáner de Documentos',
       desc: 'Combina frente y reverso o centra un documento para imprimir.' },
-    { id: 'appOCR', emoji: '🔎', title: 'OCR de PDF',
-      desc: 'Convierte un PDF escaneado en texto seleccionable y buscable.' },
+    { id: 'appPDF', emoji: '📚', title: 'Herramientas PDF', badge: 'Suite',
+      desc: 'OCR, unir, organizar, dividir, comprimir y convertir PDF. Todo local.' },
     { id: 'appImagen', emoji: '🗜️', title: 'Convertir / Comprimir a WebP',
       desc: 'Pasa JPG o PNG a WebP y comprime según el porcentaje.' },
     { id: 'appFondo', emoji: '🪄', title: 'Quitar fondo',

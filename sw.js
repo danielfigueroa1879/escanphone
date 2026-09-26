@@ -5,13 +5,14 @@
    Al subir cambios: incrementar la versión del CACHE — así todos los
    dispositivos detectan el nuevo SW, borran el caché viejo y muestran la
    última versión sin necesidad de vaciar caché a mano. */
-const CACHE = 'escaner-v24';
+const CACHE = 'escaner-v25';
 const ASSETS = [
   './',
   'index.html',
   'css/styles.css',
   'js/scanner.js',
   'js/tools.js',
+  'js/pdftools.js',
   'manifest.json',
   'favicon/web-app-manifest-192x192.png',
   'favicon/web-app-manifest-512x512.png',
