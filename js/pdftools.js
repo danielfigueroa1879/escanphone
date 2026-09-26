@@ -1066,9 +1066,9 @@
     flush();
     return out;
   }
-  // Pipeline por página: líneas → detección de tablas → fusión de párrafos.
+  // Pipeline por página: líneas → tablas → separar columnas → fusión de párrafos.
   function itemsAParrafos(textContent, fontMap) {
-    return fusionarParrafos(agruparEnTablas(extraerLineas(textContent, fontMap)));
+    return fusionarParrafos(dividirColumnas(agruparEnTablas(extraerLineas(textContent, fontMap))));
   }
   // ---- Detección de TABLAS por alineación de columnas (sin PyMuPDF) --------
   // Recibe líneas ricas [{indentPt, spaceBeforePt, runs:[{x,text,sizePt,...}]}]
@@ -1141,6 +1141,34 @@
     // Exigir alineación consistente en la mayoría de filas para evitar falsos positivos.
     if (consistentes < Math.ceil(grupo.length * 0.6)) return null;
     return { type: 'table', rows };
+  }
+
+  // Separa COLUMNAS: si una línea tiene un hueco horizontal grande (columnas
+  // lado a lado, como un membrete a la izquierda y el título a la derecha),
+  // la divide en varias líneas independientes conservando la X de cada una.
+  // Así no se concatenan textos de columnas distintas y cada bloque queda en
+  // su posición horizontal. Las tablas y los bloques ya formados pasan igual.
+  function dividirColumnas(mezcla) {
+    const out = [];
+    for (const m of mezcla) {
+      if (m.type) { out.push(m); continue; }              // tabla u otro bloque
+      const parts = m.parts || [];
+      if (parts.length < 2) { out.push(m); continue; }
+      const gut = Math.max(48, (m.size || 12) * 3.5);      // hueco mínimo de columna
+      const segs = []; let cur = [parts[0]];
+      for (let k = 1; k < parts.length; k++) {
+        const prev = cur[cur.length - 1];
+        const gap = parts[k].x - (prev.x + anchoRun(prev));
+        if (gap > gut) { segs.push(cur); cur = [parts[k]]; } else cur.push(parts[k]);
+      }
+      segs.push(cur);
+      if (segs.length === 1) { out.push(m); continue; }
+      for (const sg of segs) {
+        const last = sg[sg.length - 1];
+        out.push({ y: m.y, size: m.size, minx: sg[0].x, right: last.x + anchoRun(last), parts: sg });
+      }
+    }
+    return out;
   }
 
   // Construye un .docx válido a partir de bloques:
