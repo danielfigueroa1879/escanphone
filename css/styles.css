@@ -18,14 +18,14 @@
 
   /* ===== Modo oscuro ===== */
   body.dark {
-    --bg: #0e0e13;
-    --ink: #f2f2f5;
-    --ink-soft: #c0c0c8;
-    --ink-mute: #82828c;
-    --line: #3a3a44;          /* contorno visible sobre superficies oscuras */
-    --line-strong: #55555e;
-    --surface: #1a1a20;
-    --surface-2: #23232a;
+    --bg: #17171d;            /* fondo un poco más claro para mejor lectura */
+    --ink: #f5f5f8;
+    --ink-soft: #d2d2db;
+    --ink-mute: #9a9aa6;      /* texto secundario más legible */
+    --line: #4c4c59;          /* contornos MÁS visibles sobre lo oscuro */
+    --line-strong: #6c6c7a;
+    --surface: #24242e;       /* tarjetas más claras */
+    --surface-2: #30303c;
     --brand: #ff4147;
     --green: #25D366;
     --btn-primary-bg: #ffffff;
