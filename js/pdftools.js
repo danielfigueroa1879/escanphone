@@ -947,7 +947,8 @@
             '<div class="seg" id="p2wLangSeg"><button type="button" class="active" data-l="spa+eng">ES + EN</button>' +
             '<button type="button" data-l="spa">Español</button><button type="button" data-l="eng">English</button></div></div>' +
           '<p class="name-hint" style="margin:6px 2px 0;">Genera <b>texto real editable</b> en el <b>mismo orden</b> que el original, conservando el <b>tamaño de letra</b>, la <b>fuente aproximada</b> y la <b>posición/indentación</b> de cada línea. Si una página es imagen o está escaneada, se reconoce con <b>OCR</b> automáticamente. <b>No se insertan imágenes:</b> el resultado es 100% texto editable.</p>' +
-          '<p class="name-hint" style="margin:6px 2px 0; opacity:.85;">Para máxima fidelidad (fuente exacta, negrita/cursiva por estilo y tablas reales) usa el script de escritorio <b>tools/pdf_to_word.py</b> (PyMuPDF), incluido en el proyecto.</p>' +
+          '<p class="name-hint" style="margin:6px 2px 0;">Además detecta <b>tablas</b> por alineación de columnas y las crea como <b>tablas reales</b> de Word.</p>' +
+          '<p class="name-hint" style="margin:6px 2px 0; opacity:.85;">Para máxima fidelidad (fuente exacta, negrita/cursiva por estilo y tablas con bordes) usa el script de escritorio <b>tools/pdf_to_word.py</b> (PyMuPDF), incluido en el proyecto.</p>' +
           '<button class="btn brand full" id="p2wRun" style="margin-top:14px;">📝 Convertir a Word (.docx)</button>' +
           '<a class="btn primary full" id="p2wDl" style="display:none; margin-top:10px;">⬇ Descargar .docx</a>' +
         '</div>' +
@@ -1003,8 +1004,82 @@
     });
     return out;
   }
+  // ---- Detección de TABLAS por alineación de columnas (sin PyMuPDF) --------
+  // Recibe líneas ricas [{indentPt, spaceBeforePt, runs:[{x,text,sizePt,...}]}]
+  // y agrupa filas consecutivas que forman columnas alineadas en un bloque
+  // {type:'table', rows:[[celda,...],...]}. El resto quedan como 'p'.
+  function anchoRun(r) { return (r.text ? r.text.length : 0) * (r.sizePt || 10) * 0.5; }
+  function celdasDeLinea(l) {
+    const rs = (l.runs || []).slice().sort((a, b) => a.x - b.x);
+    if (!rs.length) return [];
+    const size = rs.reduce((m, r) => Math.max(m, r.sizePt || 10), 10);
+    const umbral = Math.max(24, size * 3); // hueco mínimo para separar columnas
+    const cells = []; let cur = null;
+    rs.forEach(r => {
+      if (!cur) { cur = { x: r.x, text: r.text }; cur.xEnd = r.x + anchoRun(r); return; }
+      const gap = r.x - cur.xEnd;
+      if (gap > umbral) { cells.push(cur); cur = { x: r.x, text: r.text }; }
+      else { cur.text += r.text; }
+      cur.xEnd = r.x + anchoRun(r);
+    });
+    if (cur) cells.push(cur);
+    return cells;
+  }
+  function agruparEnTablas(lineas) {
+    // Precalcular celdas por línea.
+    const info = lineas.map(l => ({ l, cells: celdasDeLinea(l) }));
+    const salida = [];
+    let i = 0;
+    while (i < info.length) {
+      // ¿Arranca aquí un grupo de filas "tabulares" (>=2 celdas)?
+      if (info[i].cells.length >= 2) {
+        let j = i;
+        while (j < info.length && info[j].cells.length >= 2) j++;
+        const grupo = info.slice(i, j);
+        const tabla = intentarTabla(grupo);
+        if (tabla) { salida.push(tabla); i = j; continue; }
+      }
+      salida.push(info[i].l);
+      i++;
+    }
+    return salida;
+  }
+  function intentarTabla(grupo) {
+    if (grupo.length < 2) return null;
+    // Clusterizar las posiciones X de todas las celdas en columnas.
+    const xs = [];
+    grupo.forEach(g => g.cells.forEach(c => xs.push(c.x)));
+    xs.sort((a, b) => a - b);
+    const cols = []; const TOL = 22;
+    xs.forEach(x => {
+      const c = cols.find(k => Math.abs(k.x - x) <= TOL);
+      if (c) { c.x = (c.x * c.n + x) / (c.n + 1); c.n++; } else cols.push({ x, n: 1 });
+    });
+    cols.sort((a, b) => a.x - b.x);
+    if (cols.length < 2) return null;
+    // Construir la matriz asignando cada celda a su columna más cercana.
+    const rows = []; let consistentes = 0;
+    for (const g of grupo) {
+      const fila = new Array(cols.length).fill('');
+      let ok = true;
+      for (const c of g.cells) {
+        let idx = 0, best = Infinity;
+        cols.forEach((k, n) => { const d = Math.abs(k.x - c.x); if (d < best) { best = d; idx = n; } });
+        if (fila[idx]) { ok = false; break; }            // dos celdas a la misma columna → no es tabla limpia
+        fila[idx] = (c.text || '').trim();
+      }
+      if (!ok) return null;
+      if (g.cells.length === cols.length) consistentes++;
+      rows.push(fila);
+    }
+    // Exigir alineación consistente en la mayoría de filas para evitar falsos positivos.
+    if (consistentes < Math.ceil(grupo.length * 0.6)) return null;
+    return { type: 'table', rows };
+  }
+
   // Construye un .docx válido a partir de bloques:
-  //  {type:'p', text, heading?} | {type:'img', bytes, w, h, ext} | {type:'pagebreak'}
+  //  {type:'p', text|runs, indentPt?, spaceBeforePt?} | {type:'table', rows} |
+  //  {type:'img', bytes, w, h, ext} | {type:'pagebreak'}
   async function construirDocx(bloques) {
     const JSZip = await ensureJSZip();
     const zip = new JSZip();
@@ -1043,9 +1118,29 @@
         (r.bold ? '<w:b/>' : '') + (r.italic ? '<w:i/>' : '') +
         '<w:sz w:val="' + sz + '"/></w:rPr><w:t xml:space="preserve">' + esc(r.text) + '</w:t></w:r>';
     }
+    // Tabla real de Word con bordes (definidos inline, sin depender de estilos).
+    function tablaXml(rows) {
+      const nCols = rows.reduce((m, r) => Math.max(m, r.length), 0) || 1;
+      const bordes = '<w:tblBorders>' +
+        ['top', 'left', 'bottom', 'right', 'insideH', 'insideV']
+          .map(s => '<w:' + s + ' w:val="single" w:sz="4" w:space="0" w:color="auto"/>').join('') +
+        '</w:tblBorders>';
+      const grid = '<w:tblGrid>' + Array(nCols).fill('<w:gridCol w:w="0"/>').join('') + '</w:tblGrid>';
+      const trs = rows.map(fila => {
+        const tcs = [];
+        for (let j = 0; j < nCols; j++) {
+          const val = fila[j] || '';
+          tcs.push('<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>' +
+            '<w:p><w:r><w:t xml:space="preserve">' + esc(val) + '</w:t></w:r></w:p></w:tc>');
+        }
+        return '<w:tr>' + tcs.join('') + '</w:tr>';
+      }).join('');
+      return '<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/>' + bordes + '</w:tblPr>' + grid + trs + '</w:tbl><w:p/>';
+    }
     const body = bloques.map(b => {
       if (b.type === 'pagebreak') return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
       if (b.type === 'img') return imgXml(b);
+      if (b.type === 'table') return tablaXml(b.rows || []);
       // Párrafo con posición (indentación) y espacio vertical aproximados.
       const ind = b.indentPt ? '<w:ind w:left="' + Math.round(b.indentPt * 20) + '"/>' : '';
       const sb = '<w:spacing w:before="' + Math.round((b.spaceBeforePt || 0) * 20) + '" w:after="0"/>';
@@ -1163,7 +1258,8 @@
           parrafos = await ocrPaginaAParrafos(pdf, i, worker);
           usoOCR = true;
         }
-        parrafos.forEach(p => bloques.push(Object.assign({ type: 'p' }, p)));
+        // Detectar tablas por alineación de columnas y volcar en orden.
+        agruparEnTablas(parrafos).forEach(b => bloques.push(b.type ? b : Object.assign({ type: 'p' }, b)));
       }
       if (worker) { await worker.terminate(); worker = null; }
       if (!bloques.length) bloques.push({ type: 'p', text: '(No se detectó texto en el documento.)' });
