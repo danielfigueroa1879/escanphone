@@ -946,7 +946,8 @@
           '<div class="field-row"><div class="fr-label">Idioma (OCR)<small>Para páginas escaneadas o en imagen</small></div>' +
             '<div class="seg" id="p2wLangSeg"><button type="button" class="active" data-l="spa+eng">ES + EN</button>' +
             '<button type="button" data-l="spa">Español</button><button type="button" data-l="eng">English</button></div></div>' +
-          '<p class="name-hint" style="margin:6px 2px 0;">Genera <b>texto real editable</b> en el <b>mismo orden</b> que el original. Si una página es una imagen o está escaneada, se reconoce automáticamente con <b>OCR</b> y su texto se agrega en orden. <b>No se insertan imágenes:</b> el resultado es 100% texto editable. Se conservan párrafos, títulos y saltos de página.</p>' +
+          '<p class="name-hint" style="margin:6px 2px 0;">Genera <b>texto real editable</b> en el <b>mismo orden</b> que el original, conservando el <b>tamaño de letra</b>, la <b>fuente aproximada</b> y la <b>posición/indentación</b> de cada línea. Si una página es imagen o está escaneada, se reconoce con <b>OCR</b> automáticamente. <b>No se insertan imágenes:</b> el resultado es 100% texto editable.</p>' +
+          '<p class="name-hint" style="margin:6px 2px 0; opacity:.85;">Para máxima fidelidad (fuente exacta, negrita/cursiva por estilo y tablas reales) usa el script de escritorio <b>tools/pdf_to_word.py</b> (PyMuPDF), incluido en el proyecto.</p>' +
           '<button class="btn brand full" id="p2wRun" style="margin-top:14px;">📝 Convertir a Word (.docx)</button>' +
           '<a class="btn primary full" id="p2wDl" style="display:none; margin-top:10px;">⬇ Descargar .docx</a>' +
         '</div>' +
@@ -961,27 +962,46 @@
       catch (e) { toast('❌ ' + e.message); }
     }
   }
-  // Convierte los items de texto de una página en párrafos (agrupando por línea).
+  // Mapea la fuente de pdf.js a una familia que Word entienda.
+  function famJS(styles, fontName) {
+    const ff = ((styles && styles[fontName] && styles[fontName].fontFamily) || '') + ' ' + (fontName || '');
+    if (/serif/i.test(ff) && !/sans/i.test(ff)) return 'Times New Roman';
+    if (/mono|courier|consol/i.test(ff)) return 'Courier New';
+    return 'Arial';
+  }
+  function biJS(styles, fontName) {
+    const ff = ((styles && styles[fontName] && styles[fontName].fontFamily) || '') + ' ' + (fontName || '');
+    return { bold: /bold|black|heavy|semibold/i.test(ff), italic: /italic|oblique/i.test(ff) };
+  }
+  // Convierte los items de texto de una página en LÍNEAS RICAS: cada línea
+  // conserva su indentación (X), el espacio vertical antes (hueco), y un run
+  // por fragmento con su fuente, tamaño y estilo reales. Orden de lectura:
+  // arriba→abajo (Y) e izquierda→derecha (X).
   function itemsAParrafos(textContent) {
-    const items = (textContent.items || []).filter(it => it.str != null);
+    const styles = textContent.styles || {};
+    const items = (textContent.items || []).filter(it => it.str != null && it.str !== '');
     if (!items.length) return [];
-    // Agrupar por coordenada Y (línea), luego ordenar por X.
     const lineas = [];
     items.forEach(it => {
-      const y = Math.round(it.transform[5]);
-      const h = Math.abs(it.transform[3]) || Math.abs(it.transform[0]) || 10;
-      let linea = lineas.find(l => Math.abs(l.y - y) <= Math.max(3, h * 0.5));
-      if (!linea) { linea = { y, h, parts: [] }; lineas.push(linea); }
-      linea.parts.push({ x: it.transform[4], s: it.str });
+      const size = it.height || Math.hypot(it.transform[2], it.transform[3]) || 10;
+      const y = it.transform[5], x = it.transform[4];
+      let ln = lineas.find(l => Math.abs(l.y - y) <= Math.max(2, size * 0.5));
+      if (!ln) { ln = { y, size, minx: x, parts: [] }; lineas.push(ln); }
+      ln.minx = Math.min(ln.minx, x); ln.size = Math.max(ln.size, size);
+      const bi = biJS(styles, it.fontName);
+      ln.parts.push({ x, text: it.str, font: famJS(styles, it.fontName), sizePt: size, bold: bi.bold, italic: bi.italic });
     });
     lineas.sort((a, b) => b.y - a.y); // de arriba a abajo
-    const alturas = lineas.map(l => l.h).sort((a, b) => a - b);
-    const hMed = alturas[Math.floor(alturas.length / 2)] || 10;
-    return lineas.map(l => {
+    const out = []; let prevY = null;
+    lineas.forEach(l => {
       l.parts.sort((a, b) => a.x - b.x);
-      const text = l.parts.map(p => p.s).join('').replace(/\s+/g, ' ').trim();
-      return { text, heading: l.h > hMed * 1.35 && text.length < 120 };
-    }).filter(p => p.text.length);
+      if (!l.parts.map(p => p.text).join('').trim()) return;
+      let sb = 0;
+      if (prevY != null) sb = Math.max(0, Math.min(48, (prevY - l.y) - l.size));
+      prevY = l.y;
+      out.push({ type: 'p', indentPt: Math.max(0, l.minx), spaceBeforePt: sb, runs: l.parts });
+    });
+    return out;
   }
   // Construye un .docx válido a partir de bloques:
   //  {type:'p', text, heading?} | {type:'img', bytes, w, h, ext} | {type:'pagebreak'}
@@ -1015,12 +1035,26 @@
         '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
     }
 
+    // Un run con su formato (fuente, tamaño, negrita, cursiva).
+    function runXml(r) {
+      const sz = Math.max(6, Math.round((r.sizePt || 11) * 2)); // half-points
+      const fam = esc(r.font || 'Arial');
+      return '<w:r><w:rPr><w:rFonts w:ascii="' + fam + '" w:hAnsi="' + fam + '" w:cs="' + fam + '"/>' +
+        (r.bold ? '<w:b/>' : '') + (r.italic ? '<w:i/>' : '') +
+        '<w:sz w:val="' + sz + '"/></w:rPr><w:t xml:space="preserve">' + esc(r.text) + '</w:t></w:r>';
+    }
     const body = bloques.map(b => {
       if (b.type === 'pagebreak') return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
       if (b.type === 'img') return imgXml(b);
-      if (b.heading)
-        return '<w:p><w:pPr><w:spacing w:before="200" w:after="80"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="30"/></w:rPr><w:t xml:space="preserve">' + esc(b.text) + '</w:t></w:r></w:p>';
-      return '<w:p><w:r><w:t xml:space="preserve">' + esc(b.text) + '</w:t></w:r></w:p>';
+      // Párrafo con posición (indentación) y espacio vertical aproximados.
+      const ind = b.indentPt ? '<w:ind w:left="' + Math.round(b.indentPt * 20) + '"/>' : '';
+      const sb = '<w:spacing w:before="' + Math.round((b.spaceBeforePt || 0) * 20) + '" w:after="0"/>';
+      const pPr = '<w:pPr>' + ind + sb + '</w:pPr>';
+      let runs;
+      if (b.runs && b.runs.length) runs = b.runs.map(runXml).join('');
+      else if (b.heading) runs = '<w:r><w:rPr><w:b/><w:sz w:val="30"/></w:rPr><w:t xml:space="preserve">' + esc(b.text || '') + '</w:t></w:r>';
+      else runs = '<w:r><w:t xml:space="preserve">' + esc(b.text || '') + '</w:t></w:r>';
+      return '<w:p>' + pPr + runs + '</w:p>';
     }).join('');
 
     const documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -1064,9 +1098,10 @@
   async function ocrPaginaAParrafos(pdf, num, worker) {
     const base = (await pdf.getPage(num)).getViewport({ scale: 1 }).width;
     const c = await renderPagina(pdf, num, Math.min(2200, base * 2.5));
+    const S = c.width / base; // px por punto → para convertir bbox a puntos
     const { data } = await worker.recognize(c, {}, { blocks: true });
     c.width = c.height = 0;
-    // Agrupar palabras por línea usando su posición vertical.
+    // Agrupar palabras por línea usando su posición vertical (bbox del OCR).
     const words = [];
     (data.blocks || []).forEach(b => (b.paragraphs || []).forEach(p =>
       (p.lines || []).forEach(l => (l.words || []).forEach(w => {
@@ -1076,14 +1111,26 @@
       const lineas = [];
       words.forEach(w => {
         let ln = lineas.find(L => Math.abs(L.y - w.y) <= Math.max(6, w.h * 0.6));
-        if (!ln) { ln = { y: w.y, parts: [] }; lineas.push(ln); }
+        if (!ln) { ln = { y: w.y, minx: w.x, h: w.h, parts: [] }; lineas.push(ln); }
+        ln.minx = Math.min(ln.minx, w.x); ln.h = Math.max(ln.h, w.h);
         ln.parts.push(w);
       });
       lineas.sort((a, b) => a.y - b.y);
-      return lineas.map(L => { L.parts.sort((a, b) => a.x - b.x); return { text: L.parts.map(p => p.t).join(' ').replace(/\s+/g, ' ').trim() }; }).filter(p => p.text);
+      const out = []; let prevY = null;
+      lineas.forEach(L => {
+        L.parts.sort((a, b) => a.x - b.x);
+        const texto = L.parts.map(p => p.t).join(' ').replace(/\s+/g, ' ').trim();
+        if (!texto) return;
+        const sizePt = (L.h / S) * 0.8;   // alto de línea (px) → tamaño en puntos
+        let sb = 0;
+        if (prevY != null) sb = Math.max(0, Math.min(48, (L.y - prevY) / S - sizePt));
+        prevY = L.y;
+        out.push({ type: 'p', indentPt: Math.max(0, L.minx / S), spaceBeforePt: sb, runs: [{ text: texto, font: 'Arial', sizePt: sizePt, bold: false, italic: false }] });
+      });
+      return out;
     }
     // Respaldo: texto plano por saltos de línea.
-    return (data.text || '').split(/\n+/).map(t => ({ text: t.replace(/\s+/g, ' ').trim() })).filter(p => p.text);
+    return (data.text || '').split(/\n+/).map(t => ({ type: 'p', runs: [{ text: t.replace(/\s+/g, ' ').trim(), font: 'Arial', sizePt: 11 }] })).filter(p => p.runs[0].text);
   }
 
   async function runPdf2Word(lang) {
