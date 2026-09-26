@@ -946,9 +946,7 @@
           '<div class="field-row"><div class="fr-label">Idioma (OCR)<small>Para páginas escaneadas o en imagen</small></div>' +
             '<div class="seg" id="p2wLangSeg"><button type="button" class="active" data-l="spa+eng">ES + EN</button>' +
             '<button type="button" data-l="spa">Español</button><button type="button" data-l="eng">English</button></div></div>' +
-          '<p class="name-hint" style="margin:6px 2px 0;">Genera <b>texto real editable</b> en el <b>mismo orden</b> que el original, conservando el <b>tamaño de letra</b>, la <b>fuente aproximada</b> y la <b>posición/indentación</b> de cada línea. Si una página es imagen o está escaneada, se reconoce con <b>OCR</b> automáticamente. <b>No se insertan imágenes:</b> el resultado es 100% texto editable.</p>' +
-          '<p class="name-hint" style="margin:6px 2px 0;">Además detecta <b>tablas</b> por alineación de columnas y las crea como <b>tablas reales</b> de Word.</p>' +
-          '<p class="name-hint" style="margin:6px 2px 0; opacity:.85;">Para máxima fidelidad (fuente exacta, negrita/cursiva por estilo y tablas con bordes) usa el script de escritorio <b>tools/pdf_to_word.py</b> (PyMuPDF), incluido en el proyecto.</p>' +
+          '<p class="name-hint" style="margin:6px 2px 0;">Genera <b>texto real editable</b> en el <b>mismo orden</b> que el original, conservando la <b>fuente real</b> (Calibri, Arial, Times…), la <b>negrita/cursiva</b>, el <b>tamaño de letra</b> y la <b>posición/indentación</b>. Detecta <b>tablas</b> y las crea como <b>tablas reales</b> de Word. Si una página es imagen o está escaneada, se reconoce con <b>OCR</b> automáticamente. <b>No se insertan imágenes:</b> el resultado es 100% texto editable.</p>' +
           '<button class="btn brand full" id="p2wRun" style="margin-top:14px;">📝 Convertir a Word (.docx)</button>' +
           '<a class="btn primary full" id="p2wDl" style="display:none; margin-top:10px;">⬇ Descargar .docx</a>' +
         '</div>' +
@@ -963,20 +961,53 @@
       catch (e) { toast('❌ ' + e.message); }
     }
   }
-  // Mapea la fuente de pdf.js a una familia que Word entienda.
+  // Familia genérica de respaldo (cuando no se logra el nombre real).
   function famJS(styles, fontName) {
     const ff = ((styles && styles[fontName] && styles[fontName].fontFamily) || '') + ' ' + (fontName || '');
     if (/serif/i.test(ff) && !/sans/i.test(ff)) return 'Times New Roman';
     if (/mono|courier|consol/i.test(ff)) return 'Courier New';
-    return 'Arial';
+    return 'Calibri';
   }
   function biJS(styles, fontName) {
     const ff = ((styles && styles[fontName] && styles[fontName].fontFamily) || '') + ' ' + (fontName || '');
     return { bold: /bold|black|heavy|semibold/i.test(ff), italic: /italic|oblique/i.test(ff) };
   }
+  // Limpia el nombre REAL de la fuente (de pdf.js commonObjs), p. ej.
+  // "BAAAAA+Calibri-Bold" → { family:'Calibri', bold:true, italic:false }.
+  function limpiaFuente(name) {
+    if (!name) return null;
+    let n = name.indexOf('+') >= 0 ? name.slice(name.indexOf('+') + 1) : name;
+    const bold = /bold|black|heavy|semibold/i.test(n);
+    const italic = /italic|oblique/i.test(n);
+    let fam = n.replace(/[-,\s]?(BoldItalic|SemiBold|DemiBold|Bold|Italic|Oblique|Regular|Roman|Light|Medium|Black|Heavy|Condensed|Thin)/gi, '')
+      .replace(/(PSMT|PS|MT)$/i, '').replace(/[-,_\s]+$/, '').trim();
+    if (/^TimesNewRoman/i.test(fam) || /^Times/i.test(fam)) fam = 'Times New Roman';
+    else if (/^Calibri/i.test(fam)) fam = 'Calibri';
+    else if (/^Arial/i.test(fam)) fam = 'Arial';
+    else if (/^Cambria/i.test(fam)) fam = 'Cambria';
+    else if (/^Courier/i.test(fam)) fam = 'Courier New';
+    else if (/^Verdana/i.test(fam)) fam = 'Verdana';
+    else if (/^Georgia/i.test(fam)) fam = 'Georgia';
+    if (!fam) fam = 'Calibri';
+    return { family: fam, bold, italic };
+  }
+  // Construye el mapa fontName → {family,bold,italic} usando el nombre real que
+  // pdf.js expone en page.commonObjs (requiere haber cargado la página).
+  function resolverFuentes(page, tc) {
+    const map = {};
+    const names = new Set((tc.items || []).map(it => it.fontName));
+    names.forEach(fn => {
+      if (!fn) return;
+      let obj = null;
+      try { obj = page.commonObjs.get(fn); } catch (_) { obj = null; }
+      const cleaned = obj && obj.name ? limpiaFuente(obj.name) : null;
+      if (cleaned) map[fn] = cleaned;
+    });
+    return map;
+  }
   // Extrae las LÍNEAS de una página (agrupa items por Y; ordena por X).
   // Cada línea: { y (baseline), size, minx, right, parts:[{x,text,font,sizePt,bold,italic}] }
-  function extraerLineas(textContent) {
+  function extraerLineas(textContent, fontMap) {
     const styles = textContent.styles || {};
     const items = (textContent.items || []).filter(it => it.str != null && it.str !== '');
     if (!items.length) return [];
@@ -988,8 +1019,11 @@
       let ln = lineas.find(l => Math.abs(l.y - y) <= Math.max(2, size * 0.5));
       if (!ln) { ln = { y, size, minx: x, right: x + w, parts: [] }; lineas.push(ln); }
       ln.minx = Math.min(ln.minx, x); ln.right = Math.max(ln.right, x + w); ln.size = Math.max(ln.size, size);
-      const bi = biJS(styles, it.fontName);
-      ln.parts.push({ x, text: it.str, font: famJS(styles, it.fontName), sizePt: size, bold: bi.bold, italic: bi.italic });
+      // Fuente real (nombre exacto + negrita/cursiva) o respaldo genérico.
+      const fm = fontMap && fontMap[it.fontName];
+      const font = fm ? fm.family : famJS(styles, it.fontName);
+      const bi = fm ? fm : biJS(styles, it.fontName);
+      ln.parts.push({ x, text: it.str, font: font, sizePt: size, bold: !!bi.bold, italic: !!bi.italic });
     });
     lineas.forEach(l => l.parts.sort((a, b) => a.x - b.x));
     lineas.sort((a, b) => b.y - a.y); // de arriba a abajo
@@ -1033,8 +1067,8 @@
     return out;
   }
   // Pipeline por página: líneas → detección de tablas → fusión de párrafos.
-  function itemsAParrafos(textContent) {
-    return fusionarParrafos(agruparEnTablas(extraerLineas(textContent)));
+  function itemsAParrafos(textContent, fontMap) {
+    return fusionarParrafos(agruparEnTablas(extraerLineas(textContent, fontMap)));
   }
   // ---- Detección de TABLAS por alineación de columnas (sin PyMuPDF) --------
   // Recibe líneas ricas [{indentPt, spaceBeforePt, runs:[{x,text,sizePt,...}]}]
@@ -1282,8 +1316,11 @@
         const chars = (tc.items || []).reduce((a, it) => a + ((it.str || '').trim().length), 0);
         let parrafos;
         if (chars >= 15) {
+          // Cargar las fuentes reales de la página (nombre exacto + negrita/cursiva).
+          let fontMap = {};
+          try { await page.getOperatorList(); fontMap = resolverFuentes(page, tc); } catch (_) {}
           // Página con texto real → líneas, tablas y párrafos fusionados en orden.
-          parrafos = itemsAParrafos(tc);
+          parrafos = itemsAParrafos(tc, fontMap);
         } else {
           // Página en imagen/escaneada → OCR (rápido, solo esta página).
           if (!worker) { setProg('p2w', 4 + (i / total) * 90, 'Cargando OCR…', true); const T = await ensureTesseract(); worker = await T.createWorker(lang, 1); }
