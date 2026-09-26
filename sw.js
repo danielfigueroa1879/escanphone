@@ -5,7 +5,7 @@
    Al subir cambios: incrementar la versión del CACHE — así todos los
    dispositivos detectan el nuevo SW, borran el caché viejo y muestran la
    última versión sin necesidad de vaciar caché a mano. */
-const CACHE = 'escaner-v29';
+const CACHE = 'escaner-v30';
 const ASSETS = [
   './',
   'index.html',
