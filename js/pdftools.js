@@ -635,19 +635,25 @@
   // Reencode de páginas a imagen JPEG (método open-source fiable en navegador).
   // Ideal para PDF escaneados/con muchas imágenes. Muestra original→final→%.
   // ====================================================================
-  const comp = { file: null, level: 'balanced', token: null };
+  const comp = { file: null, level: 'balanced', method: 'auto', token: null };
   function buildCompress() {
     crearVista('pdfCompress', '🗜️', 'Comprimir PDF', 'Reduce el peso del PDF conservando la mejor calidad posible.',
       '<div class="card">' +
         dropHTML('cmp', 'application/pdf', false, 'Sube un PDF', 'Toca o arrastra el PDF a comprimir') +
         '<div id="cmpPanel" style="display:none; margin-top:12px;">' +
-          '<div class="field-row"><div class="fr-label">Nivel<small>Calidad vs. tamaño</small></div>' +
+          '<div class="field-row"><div class="fr-label">Método<small>Cómo comprimir</small></div>' +
+            '<div class="seg" id="cmpMethodSeg">' +
+              '<button type="button" class="active" data-m="auto">Automático</button>' +
+              '<button type="button" data-m="text">Conservar texto</button>' +
+              '<button type="button" data-m="raster">Rasterizar</button>' +
+            '</div></div>' +
+          '<div class="field-row" id="cmpLvlRow"><div class="fr-label">Nivel<small>Calidad vs. tamaño</small></div>' +
             '<div class="seg" id="cmpLvlSeg">' +
               '<button type="button" data-l="low">Baja</button>' +
               '<button type="button" class="active" data-l="balanced">Media</button>' +
               '<button type="button" data-l="high">Alta</button>' +
             '</div></div>' +
-          '<p class="name-hint" style="margin:6px 2px 0;">Baja = máxima calidad · Alta = archivo más pequeño. Convierte cada página a imagen; funciona muy bien con escaneos.</p>' +
+          '<p class="name-hint" style="margin:6px 2px 0;"><b>Automático:</b> detecta si el PDF es de texto y lo comprime <b>sin perder nitidez ni el texto seleccionable</b>; si es escaneado, rasteriza. <b>Conservar texto:</b> nunca rasteriza (mantiene el texto vectorial). <b>Rasterizar:</b> convierte cada página a imagen (máxima reducción en escaneos). El Nivel solo aplica al rasterizar.</p>' +
           '<div class="pdf-stats" id="cmpStats" style="display:none;"></div>' +
           '<button class="btn brand full" id="cmpRun" style="margin-top:14px;">🗜️ Comprimir</button>' +
           '<a class="btn primary full" id="cmpDl" style="display:none; margin-top:10px;">⬇ Descargar comprimido</a>' +
@@ -656,6 +662,10 @@
     wireDrop('cmp', fs => cargar(fs[0]));
     $('cmpLvlSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
       comp.level = b.dataset.l; $('cmpLvlSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+    }));
+    $('cmpMethodSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+      comp.method = b.dataset.m; $('cmpMethodSeg').querySelectorAll('button').forEach(x => x.classList.toggle('active', x === b));
+      $('cmpLvlRow').style.display = comp.method === 'text' ? 'none' : '';
     }));
     $('cmpRun').addEventListener('click', runCompress);
     $('cmpCancel').addEventListener('click', () => { if (comp.token) comp.token.cancelado = true; });
@@ -666,38 +676,88 @@
       catch (e) { toast('❌ ' + e.message); }
     }
   }
+  // ¿El PDF tiene texto digital? Muestrea algunas páginas con pdf.js.
+  async function detectarTextoPdf(pdf) {
+    const total = pdf.numPages;
+    const muestras = Math.min(total, 5);
+    let chars = 0;
+    for (let k = 0; k < muestras; k++) {
+      const num = 1 + Math.floor(k * (total - 1) / Math.max(1, muestras - 1));
+      const tc = await (await pdf.getPage(num)).getTextContent();
+      chars += (tc.items || []).reduce((a, it) => a + ((it.str || '').trim().length), 0);
+    }
+    return chars / muestras; // caracteres promedio por página muestreada
+  }
+  // Compresión que CONSERVA el texto vectorial: re-guarda con object streams
+  // (sin rasterizar). Reducción modesta pero mantiene texto seleccionable.
+  async function comprimirTexto(bytes) {
+    const doc = await abrirConPdfLib(bytes);
+    const out = await doc.save({ useObjectStreams: true });
+    return new Blob([out], { type: 'application/pdf' });
+  }
+  // Compresión por rasterizado (cada página → imagen JPEG).
+  async function comprimirRaster(bytes, cfg, prog) {
+    const { PDFDocument } = await ensurePdfLib();
+    const pdf = await abrirConPdfjs(bytes);
+    const out = await PDFDocument.create();
+    const total = pdf.numPages;
+    for (let i = 1; i <= total; i++) {
+      if (comp.token && comp.token.cancelado) throw new Error('Cancelado por el usuario.');
+      if (prog) prog(i, total);
+      const page = await pdf.getPage(i);
+      const base = page.getViewport({ scale: 1 });
+      const scale = Math.min(3, Math.max(0.3, cfg.w / base.width));
+      const vp = page.getViewport({ scale });
+      const c = document.createElement('canvas');
+      c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      const jpg = await new Promise(r => c.toBlob(r, 'image/jpeg', cfg.q));
+      const img = await out.embedJpg(new Uint8Array(await jpg.arrayBuffer()));
+      const p = out.addPage([c.width, c.height]);
+      p.drawImage(img, { x: 0, y: 0, width: c.width, height: c.height });
+      c.width = c.height = 0;
+    }
+    return new Blob([await out.save()], { type: 'application/pdf' });
+  }
   async function runCompress() {
     if (!comp.file) return;
     const cfg = { low: { w: 2000, q: 0.82 }, balanced: { w: 1500, q: 0.68 }, high: { w: 1100, q: 0.55 } }[comp.level];
     comp.token = nuevoToken();
     $('cmpRun').disabled = true; $('cmpDl').style.display = 'none';
     try {
-      const { PDFDocument } = await ensurePdfLib();
+      await ensurePdfLib();
       const bytes = new Uint8Array(await readAB(comp.file));
-      const pdf = await abrirConPdfjs(bytes);
-      const out = await PDFDocument.create();
-      const total = pdf.numPages;
-      for (let i = 1; i <= total; i++) {
-        if (comp.token.cancelado) throw new Error('Cancelado por el usuario.');
-        setProg('cmp', 3 + (i / total) * 88, 'Comprimiendo página ' + i + '/' + total + '…', true);
-        const page = await pdf.getPage(i);
-        const base = page.getViewport({ scale: 1 });
-        const scale = Math.min(3, Math.max(0.3, cfg.w / base.width));
-        const vp = page.getViewport({ scale });
-        const c = document.createElement('canvas');
-        c.width = Math.ceil(vp.width); c.height = Math.ceil(vp.height);
-        const ctx = c.getContext('2d');
-        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-        await page.render({ canvasContext: ctx, viewport: vp }).promise;
-        const jpg = await new Promise(r => c.toBlob(r, 'image/jpeg', cfg.q));
-        const img = await out.embedJpg(new Uint8Array(await jpg.arrayBuffer()));
-        const p = out.addPage([c.width, c.height]);
-        p.drawImage(img, { x: 0, y: 0, width: c.width, height: c.height });
-        c.width = c.height = 0; // liberar memoria
+      let blob, modoUsado;
+      const rasterProg = (i, total) => setProg('cmp', 3 + (i / total) * 88, 'Rasterizando página ' + i + '/' + total + '…', true);
+
+      if (comp.method === 'text') {
+        setProg('cmp', 20, 'Optimizando sin rasterizar…', true);
+        blob = await comprimirTexto(bytes); modoUsado = 'texto';
+      } else if (comp.method === 'raster') {
+        blob = await comprimirRaster(bytes, cfg, rasterProg); modoUsado = 'raster';
+      } else {
+        // Automático: detectar texto para decidir.
+        setProg('cmp', 8, 'Analizando el PDF…', true);
+        const pdf = await abrirConPdfjs(bytes);
+        const avg = await detectarTextoPdf(pdf);
+        const esTexto = avg > 80; // ~80+ caracteres por página → PDF de texto
+        if (esTexto) {
+          setProg('cmp', 30, 'Optimizando sin rasterizar (conserva texto)…', true);
+          const t = await comprimirTexto(bytes);
+          if (t.size < comp.file.size * 0.97) { blob = t; modoUsado = 'texto'; }
+          else {
+            // No ayudó lo suficiente: rasterizar y quedarnos con el más chico.
+            const r = await comprimirRaster(bytes, cfg, rasterProg);
+            if (r.size < t.size) { blob = r; modoUsado = 'raster'; } else { blob = t; modoUsado = 'texto'; }
+          }
+        } else {
+          blob = await comprimirRaster(bytes, cfg, rasterProg); modoUsado = 'raster';
+        }
       }
+
       setProg('cmp', 96, 'Generando archivo…', false);
-      const outBytes = await out.save();
-      const blob = new Blob([outBytes], { type: 'application/pdf' });
       const orig = comp.file.size, fin = blob.size;
       const pct = Math.round((1 - fin / orig) * 100);
       $('cmpStats').style.display = '';
@@ -708,9 +768,12 @@
       const dl = $('cmpDl');
       dl.href = URL.createObjectURL(blob); dl.download = baseName(comp.file.name) + '-comprimido.pdf';
       dl.style.display = '';
-      setProg('cmp', 100, '¡Listo!', false);
-      if (pct <= 0) toast('Este PDF ya estaba optimizado; prueba un nivel más alto.');
-      else toast('✅ Comprimido ' + pct + '%');
+      const etq = modoUsado === 'texto' ? ' (texto conservado)' : ' (rasterizado)';
+      setProg('cmp', 100, '¡Listo!' + etq, false);
+      if (pct <= 0) toast(modoUsado === 'texto'
+        ? 'Este PDF ya estaba optimizado. Para reducir más, usa «Rasterizar».'
+        : 'Ya estaba optimizado; prueba el nivel Alta.');
+      else toast('✅ Comprimido ' + pct + '%' + etq);
     } catch (e) {
       console.error(e); setProg('cmp', 0, 'Error: ' + e.message, false);
       if (!/Cancelado/.test(e.message)) toast('❌ ' + e.message); else toast('Operación cancelada');
@@ -883,7 +946,9 @@
           '<div class="field-row"><div class="fr-label">Si es escaneado (OCR)<small>Idioma para reconocer texto</small></div>' +
             '<div class="seg" id="p2wLangSeg"><button type="button" class="active" data-l="spa+eng">ES + EN</button>' +
             '<button type="button" data-l="spa">Español</button><button type="button" data-l="eng">English</button></div></div>' +
-          '<p class="name-hint" style="margin:6px 2px 0;">Conserva párrafos, títulos y saltos de página. Tablas y columnas complejas pueden simplificarse.</p>' +
+          '<div class="field-row"><div class="fr-label">Incluir imágenes de página<small>Recomendado para documentos escaneados: conserva el aspecto</small></div>' +
+            '<label class="switch"><input type="checkbox" id="p2wImg"><span class="track"></span></label></div>' +
+          '<p class="name-hint" style="margin:6px 2px 0;">Conserva párrafos, títulos y saltos de página. Con imágenes activado, cada página se incrusta como imagen y debajo va el texto (OCR o extraído) editable. Tablas y columnas complejas pueden simplificarse.</p>' +
           '<button class="btn brand full" id="p2wRun" style="margin-top:14px;">📝 Convertir a Word (.docx)</button>' +
           '<a class="btn primary full" id="p2wDl" style="display:none; margin-top:10px;">⬇ Descargar .docx</a>' +
         '</div>' +
@@ -921,25 +986,60 @@
       return { text, heading: l.h > hMed * 1.35 && text.length < 120 };
     }).filter(p => p.text.length);
   }
-  // Construye un .docx mínimo válido a partir de párrafos.
-  async function construirDocx(parrafos) {
+  // Construye un .docx válido a partir de bloques:
+  //  {type:'p', text, heading?} | {type:'img', bytes, w, h, ext} | {type:'pagebreak'}
+  async function construirDocx(bloques) {
     const JSZip = await ensureJSZip();
     const zip = new JSZip();
-    const body = parrafos.map(p => {
-      if (p.pageBreak) return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
-      const pPr = p.heading
-        ? '<w:pPr><w:spacing w:before="200" w:after="80"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="30"/></w:rPr><w:t xml:space="preserve">' + esc(p.text) + '</w:t></w:r>'
-        : '<w:r><w:t xml:space="preserve">' + esc(p.text) + '</w:t></w:r>';
-      return '<w:p>' + pPr + '</w:p>';
+    const media = [];   // {name, bytes}
+    const rels = [];    // {id, target}
+    const exts = new Set();
+    let imgN = 0, drawId = 1000;
+
+    function imgXml(b) {
+      imgN++;
+      const ext = (b.ext || 'png').toLowerCase();
+      exts.add(ext);
+      const name = 'image' + imgN + '.' + ext;
+      media.push({ name, bytes: b.bytes });
+      const rid = 'rIdImg' + imgN;
+      rels.push({ id: rid, target: 'media/' + name });
+      const MAXW = 5486400; // ~6 pulgadas de ancho útil (EMU)
+      let cx = Math.max(1, Math.round((b.w || 600) * 9525));
+      let cy = Math.max(1, Math.round((b.h || 800) * 9525));
+      if (cx > MAXW) { const k = MAXW / cx; cx = Math.round(cx * k); cy = Math.round(cy * k); }
+      const did = drawId++;
+      return '<w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0">' +
+        '<wp:extent cx="' + cx + '" cy="' + cy + '"/><wp:docPr id="' + did + '" name="Imagen ' + did + '"/>' +
+        '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+        '<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="' + did + '" name="Imagen ' + did + '"/><pic:cNvPicPr/></pic:nvPicPr>' +
+        '<pic:blipFill><a:blip r:embed="' + rid + '"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+        '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="' + cx + '" cy="' + cy + '"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+        '</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>';
+    }
+
+    const body = bloques.map(b => {
+      if (b.type === 'pagebreak') return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+      if (b.type === 'img') return imgXml(b);
+      if (b.heading)
+        return '<w:p><w:pPr><w:spacing w:before="200" w:after="80"/></w:pPr><w:r><w:rPr><w:b/><w:sz w:val="30"/></w:rPr><w:t xml:space="preserve">' + esc(b.text) + '</w:t></w:r></w:p>';
+      return '<w:p><w:r><w:t xml:space="preserve">' + esc(b.text) + '</w:t></w:r></w:p>';
     }).join('');
+
     const documentXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" ' +
+      'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">' +
       '<w:body>' + body + '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr></w:body></w:document>';
+
+    let defaults = '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>';
+    if (exts.has('png')) defaults += '<Default Extension="png" ContentType="image/png"/>';
+    if (exts.has('jpg')) defaults += '<Default Extension="jpg" ContentType="image/jpeg"/>';
+    if (exts.has('jpeg')) defaults += '<Default Extension="jpeg" ContentType="image/jpeg"/>';
     zip.file('[Content_Types].xml',
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
-      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' + defaults +
       '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
       '</Types>');
     zip.folder('_rels').file('.rels',
@@ -947,56 +1047,81 @@
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>' +
       '</Relationships>');
-    zip.folder('word').file('document.xml', documentXml);
+    const wf = zip.folder('word');
+    wf.file('document.xml', documentXml);
+    if (rels.length) {
+      wf.folder('_rels').file('document.xml.rels',
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        rels.map(r => '<Relationship Id="' + r.id + '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="' + r.target + '"/>').join('') +
+        '</Relationships>');
+      const mf = wf.folder('media');
+      media.forEach(m => mf.file(m.name, m.bytes));
+    }
     return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  }
+
+  // Renderiza una página a imagen JPEG para incrustar en el DOCX.
+  async function paginaComoImagen(pdf, num, targetW) {
+    const c = await renderPagina(pdf, num, targetW);
+    const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.72));
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    const w = c.width, h = c.height; c.width = c.height = 0;
+    return { type: 'img', bytes, w, h, ext: 'jpg' };
   }
   async function runPdf2Word(lang) {
     if (!p2w.file) return;
+    const incluirImg = $('p2wImg') && $('p2wImg').checked;
     p2w.token = nuevoToken(); $('p2wRun').disabled = true; $('p2wDl').style.display = 'none';
     let worker = null;
     try {
       const bytes = new Uint8Array(await readAB(p2w.file));
       const pdf = await abrirConPdfjs(bytes);
       const total = pdf.numPages;
-      const parrafos = [];
-      // 1) Intentar texto digital de todas las páginas.
+      // 1) Texto digital por página.
       let totalTexto = 0;
       const porPagina = [];
       for (let i = 1; i <= total; i++) {
         if (p2w.token.cancelado) throw new Error('Cancelado por el usuario.');
-        setProg('p2w', 3 + (i / total) * 45, 'Leyendo texto ' + i + '/' + total + '…', true);
-        const page = await pdf.getPage(i);
-        const tc = await page.getTextContent();
+        setProg('p2w', 3 + (i / total) * 40, 'Leyendo texto ' + i + '/' + total + '…', true);
+        const tc = await (await pdf.getPage(i)).getTextContent();
         const ps = itemsAParrafos(tc);
         porPagina.push(ps);
         totalTexto += ps.reduce((a, p) => a + p.text.length, 0);
       }
       const escaneado = totalTexto < total * 20; // muy poco texto → escaneado
-      if (!escaneado) {
-        porPagina.forEach((ps, i) => { if (i > 0) parrafos.push({ pageBreak: true }); ps.forEach(p => parrafos.push(p)); });
-      } else {
-        // 2) Documento escaneado → OCR página por página (reutiliza tesseract).
+      // 2) Si es escaneado, preparar OCR (reutiliza tesseract).
+      if (escaneado) {
         const Tesseract = await ensureTesseract();
-        worker = await Tesseract.createWorker(lang, 1, {
-          logger: m => { if (m.status === 'recognizing text' && typeof m.progress === 'number') setProg('p2w', 48 + m.progress * 0 + 0, null, true); }
-        });
-        for (let i = 1; i <= total; i++) {
-          if (p2w.token.cancelado) throw new Error('Cancelado por el usuario.');
-          setProg('p2w', 48 + (i / total) * 46, 'OCR página ' + i + '/' + total + '…', true);
+        worker = await Tesseract.createWorker(lang, 1);
+      }
+      // 3) Construir los bloques del documento.
+      const bloques = [];
+      for (let i = 1; i <= total; i++) {
+        if (p2w.token.cancelado) throw new Error('Cancelado por el usuario.');
+        if (i > 1) bloques.push({ type: 'pagebreak' });
+        setProg('p2w', 45 + (i / total) * 50, (escaneado ? 'OCR' : 'Procesando') + ' página ' + i + '/' + total + '…', true);
+        if (incluirImg) {
+          const baseW = (await pdf.getPage(i)).getViewport({ scale: 1 }).width;
+          bloques.push(await paginaComoImagen(pdf, i, Math.min(1400, baseW * 2)));
+        }
+        if (!escaneado) {
+          porPagina[i - 1].forEach(p => bloques.push(Object.assign({ type: 'p' }, p)));
+        } else {
           const c = await renderPagina(pdf, i, Math.min(2200, (await pdf.getPage(i)).getViewport({ scale: 1 }).width * 2.5));
           const { data } = await worker.recognize(c);
-          if (i > 1) parrafos.push({ pageBreak: true });
-          (data.text || '').split(/\n+/).forEach(line => { const t = line.replace(/\s+/g, ' ').trim(); if (t) parrafos.push({ text: t }); });
+          (data.text || '').split(/\n+/).forEach(line => { const t = line.replace(/\s+/g, ' ').trim(); if (t) bloques.push({ type: 'p', text: t }); });
           c.width = c.height = 0;
         }
-        await worker.terminate(); worker = null;
       }
-      if (!parrafos.length) parrafos.push({ text: '(No se detectó texto en el documento.)' });
+      if (worker) { await worker.terminate(); worker = null; }
+      if (!bloques.length) bloques.push({ type: 'p', text: '(No se detectó contenido en el documento.)' });
       setProg('p2w', 96, 'Generando .docx…', false);
-      const blob = await construirDocx(parrafos);
+      const blob = await construirDocx(bloques);
       const dl = $('p2wDl'); dl.href = URL.createObjectURL(blob); dl.download = baseName(p2w.file.name) + '.docx'; dl.style.display = '';
-      setProg('p2w', 100, '¡Listo! ' + (escaneado ? '(con OCR)' : '(texto digital)'), false);
-      toast('✅ Word generado' + (escaneado ? ' con OCR' : ''));
+      const etq = (escaneado ? '(con OCR)' : '(texto digital)') + (incluirImg ? ' + imágenes' : '');
+      setProg('p2w', 100, '¡Listo! ' + etq, false);
+      toast('✅ Word generado ' + etq);
     } catch (e) {
       console.error(e); setProg('p2w', 0, 'Error: ' + e.message, false);
       if (!/Cancelado/.test(e.message)) toast('❌ ' + e.message); else toast('Operación cancelada');
