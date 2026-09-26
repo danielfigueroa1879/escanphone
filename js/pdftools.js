@@ -974,11 +974,9 @@
     const ff = ((styles && styles[fontName] && styles[fontName].fontFamily) || '') + ' ' + (fontName || '');
     return { bold: /bold|black|heavy|semibold/i.test(ff), italic: /italic|oblique/i.test(ff) };
   }
-  // Convierte los items de texto de una página en LÍNEAS RICAS: cada línea
-  // conserva su indentación (X), el espacio vertical antes (hueco), y un run
-  // por fragmento con su fuente, tamaño y estilo reales. Orden de lectura:
-  // arriba→abajo (Y) e izquierda→derecha (X).
-  function itemsAParrafos(textContent) {
+  // Extrae las LÍNEAS de una página (agrupa items por Y; ordena por X).
+  // Cada línea: { y (baseline), size, minx, right, parts:[{x,text,font,sizePt,bold,italic}] }
+  function extraerLineas(textContent) {
     const styles = textContent.styles || {};
     const items = (textContent.items || []).filter(it => it.str != null && it.str !== '');
     if (!items.length) return [];
@@ -986,23 +984,57 @@
     items.forEach(it => {
       const size = it.height || Math.hypot(it.transform[2], it.transform[3]) || 10;
       const y = it.transform[5], x = it.transform[4];
+      const w = it.width || (it.str.length * size * 0.5);
       let ln = lineas.find(l => Math.abs(l.y - y) <= Math.max(2, size * 0.5));
-      if (!ln) { ln = { y, size, minx: x, parts: [] }; lineas.push(ln); }
-      ln.minx = Math.min(ln.minx, x); ln.size = Math.max(ln.size, size);
+      if (!ln) { ln = { y, size, minx: x, right: x + w, parts: [] }; lineas.push(ln); }
+      ln.minx = Math.min(ln.minx, x); ln.right = Math.max(ln.right, x + w); ln.size = Math.max(ln.size, size);
       const bi = biJS(styles, it.fontName);
       ln.parts.push({ x, text: it.str, font: famJS(styles, it.fontName), sizePt: size, bold: bi.bold, italic: bi.italic });
     });
+    lineas.forEach(l => l.parts.sort((a, b) => a.x - b.x));
     lineas.sort((a, b) => b.y - a.y); // de arriba a abajo
-    const out = []; let prevY = null;
-    lineas.forEach(l => {
-      l.parts.sort((a, b) => a.x - b.x);
-      if (!l.parts.map(p => p.text).join('').trim()) return;
-      let sb = 0;
-      if (prevY != null) sb = Math.max(0, Math.min(48, (prevY - l.y) - l.size));
-      prevY = l.y;
-      out.push({ type: 'p', indentPt: Math.max(0, l.minx), spaceBeforePt: sb, runs: l.parts });
-    });
+    return lineas;
+  }
+  // Fusiona LÍNEAS consecutivas que pertenecen al MISMO párrafo, para que el
+  // texto fluya y se pueda editar/justificar como en el original. Empieza un
+  // párrafo nuevo cuando hay hueco vertical grande, cambia la sangría, o la
+  // línea previa terminó corta (fin de párrafo). Las tablas pasan intactas.
+  function fusionarParrafos(mezcla) {
+    const rights = mezcla.filter(m => !m.type).map(l => l.right);
+    const textRight = rights.length ? Math.max.apply(null, rights) : 9999;
+    const out = []; let para = null, prevY = null, prevRight = null;
+    const flush = () => { if (para) { if (para.lines > 1) para.align = 'both'; delete para.lines; out.push(para); para = null; } };
+    for (const m of mezcla) {
+      if (m.type === 'table') { flush(); out.push(m); prevY = null; prevRight = null; continue; }
+      const l = m;
+      const texto = l.parts.map(p => p.text).join('');
+      if (!texto.trim()) { continue; }
+      let nueva = false;
+      if (!para) nueva = true;
+      else {
+        const gap = prevY - l.y;
+        if (gap > l.size * 1.9) nueva = true;                       // hueco grande → nuevo párrafo
+        else if (Math.abs(l.minx - para.indentPt) > 14) nueva = true; // cambia la sangría
+        else if (prevRight < textRight * 0.80) nueva = true;        // línea previa corta → fin de párrafo
+      }
+      if (nueva) {
+        flush();
+        const sb = (prevY != null) ? Math.max(0, Math.min(48, (prevY - l.y) - l.size)) : 0;
+        para = { type: 'p', indentPt: Math.max(0, l.minx), spaceBeforePt: sb, runs: [], lines: 0 };
+      } else if (para.runs.length) {
+        const last = para.runs[para.runs.length - 1];
+        if (!/[\s-]$/.test(last.text)) last.text += ' ';            // separar líneas unidas con un espacio
+      }
+      l.parts.forEach(p => para.runs.push({ text: p.text, font: p.font, sizePt: p.sizePt, bold: p.bold, italic: p.italic }));
+      para.lines++;
+      prevY = l.y; prevRight = l.right;
+    }
+    flush();
     return out;
+  }
+  // Pipeline por página: líneas → detección de tablas → fusión de párrafos.
+  function itemsAParrafos(textContent) {
+    return fusionarParrafos(agruparEnTablas(extraerLineas(textContent)));
   }
   // ---- Detección de TABLAS por alineación de columnas (sin PyMuPDF) --------
   // Recibe líneas ricas [{indentPt, spaceBeforePt, runs:[{x,text,sizePt,...}]}]
@@ -1010,7 +1042,7 @@
   // {type:'table', rows:[[celda,...],...]}. El resto quedan como 'p'.
   function anchoRun(r) { return (r.text ? r.text.length : 0) * (r.sizePt || 10) * 0.5; }
   function celdasDeLinea(l) {
-    const rs = (l.runs || []).slice().sort((a, b) => a.x - b.x);
+    const rs = (l.parts || l.runs || []).slice().sort((a, b) => a.x - b.x);
     if (!rs.length) return [];
     const size = rs.reduce((m, r) => Math.max(m, r.sizePt || 10), 10);
     const umbral = Math.max(24, size * 3); // hueco mínimo para separar columnas
@@ -1141,10 +1173,11 @@
       if (b.type === 'pagebreak') return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
       if (b.type === 'img') return imgXml(b);
       if (b.type === 'table') return tablaXml(b.rows || []);
-      // Párrafo con posición (indentación) y espacio vertical aproximados.
+      // Párrafo con posición (indentación), espacio vertical y alineación.
       const ind = b.indentPt ? '<w:ind w:left="' + Math.round(b.indentPt * 20) + '"/>' : '';
       const sb = '<w:spacing w:before="' + Math.round((b.spaceBeforePt || 0) * 20) + '" w:after="0"/>';
-      const pPr = '<w:pPr>' + ind + sb + '</w:pPr>';
+      const jc = b.align ? '<w:jc w:val="' + b.align + '"/>' : '';
+      const pPr = '<w:pPr>' + ind + sb + jc + '</w:pPr>';
       let runs;
       if (b.runs && b.runs.length) runs = b.runs.map(runXml).join('');
       else if (b.heading) runs = '<w:r><w:rPr><w:b/><w:sz w:val="30"/></w:rPr><w:t xml:space="preserve">' + esc(b.text || '') + '</w:t></w:r>';
@@ -1249,7 +1282,7 @@
         const chars = (tc.items || []).reduce((a, it) => a + ((it.str || '').trim().length), 0);
         let parrafos;
         if (chars >= 15) {
-          // Página con texto real → extraer en orden de lectura.
+          // Página con texto real → líneas, tablas y párrafos fusionados en orden.
           parrafos = itemsAParrafos(tc);
         } else {
           // Página en imagen/escaneada → OCR (rápido, solo esta página).
@@ -1258,11 +1291,18 @@
           parrafos = await ocrPaginaAParrafos(pdf, i, worker);
           usoOCR = true;
         }
-        // Detectar tablas por alineación de columnas y volcar en orden.
-        agruparEnTablas(parrafos).forEach(b => bloques.push(b.type ? b : Object.assign({ type: 'p' }, b)));
+        parrafos.forEach(b => bloques.push(b));
       }
       if (worker) { await worker.terminate(); worker = null; }
       if (!bloques.length) bloques.push({ type: 'p', text: '(No se detectó texto en el documento.)' });
+      // Normalizar la sangría: restar el margen izquierdo COMÚN del documento
+      // (así el texto normal queda al margen y solo se conservan las sangrías
+      // relativas de listas/citas), evitando el doble margen.
+      const inds = bloques.filter(b => b.type === 'p' && b.indentPt).map(b => b.indentPt);
+      if (inds.length) {
+        const baseX = Math.min.apply(null, inds);
+        bloques.forEach(b => { if (b.type === 'p' && b.indentPt) b.indentPt = Math.max(0, b.indentPt - baseX); });
+      }
       setProg('p2w', 96, 'Generando .docx…', false);
       const blob = await construirDocx(bloques);
       const dl = $('p2wDl'); dl.href = URL.createObjectURL(blob); dl.download = baseName(p2w.file.name) + '.docx'; dl.style.display = '';
