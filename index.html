@@ -178,7 +178,7 @@
     </button>
     <div class="header-txt">
       <h1>Escáner de Documentos</h1>
-      <p class="subtitle">Combina frente y reverso, o centra un documento en una hoja lista para imprimir.</p>
+      <p class="subtitle">Combina frente y reverso, o escanea varias hojas y únelas en un solo PDF listo para imprimir o enviar.</p>
     </div>
     <button class="theme-toggle" type="button" onclick="cambiarTema()" aria-label="Cambiar tema día/noche" title="Cambiar tema">
       <svg class="icon-moon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -212,7 +212,7 @@
     <div class="hero">
       <div class="hero-icon">📄</div>
       <h2>Escanea tu documento</h2>
-      <p>Combina las dos caras de una cédula o licencia, o centra un documento en una hoja lista para imprimir o enviar.</p>
+      <p>Combina las dos caras de una cédula o licencia, o escanea varias hojas seguidas y únelas en un solo PDF listo para imprimir o enviar.</p>
       <button type="button" class="hero-btn" onclick="irPaso(1)">📷 Comenzar</button>
     </div>
 
@@ -250,8 +250,8 @@
         <button class="opt-btn" data-tipo="una" type="button" onclick="setTipo(this,'una')">
           <span class="opt-emoji">📄</span>
           <span class="opt-text">
-            <strong>Una cara</strong>
-            <small>Certificado · Contrato · Hoja</small>
+            <strong>Una o varias hojas</strong>
+            <small>Certificado · Contrato · Documento de varias páginas</small>
           </span>
           <span class="opt-arrow">›</span>
         </button>
@@ -331,7 +331,7 @@
   <section class="step" data-step="4">
     <div class="step-head">
       <button class="back-btn" type="button" onclick="irPaso(3)" aria-label="Volver">‹</button>
-      <div class="step-title">Subir imágenes
+      <div class="step-title">Escanear hojas
         <small>Paso 4 de 5</small>
       </div>
     </div>
@@ -352,6 +352,8 @@
     </div>
     <div class="card">
       <img id="resultImg" alt="Hoja generada" style="max-width:100%; max-height:60vh; border:1px solid var(--line); border-radius:10px; display:block; margin:0 auto; background:#fff;">
+
+      <p class="result-note" id="resultNote" style="display:none;"></p>
 
       <div class="name-row">
         <label for="nombreArchivo">Nombre</label>

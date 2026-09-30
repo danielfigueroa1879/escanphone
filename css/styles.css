@@ -356,6 +356,126 @@
   }
   .upload-chip svg { width: 14px; height: 14px; }
 
+  /* ===== Modo multi-hoja (documento de 1 o varias páginas) ===== */
+  .pages-panel { display: flex; flex-direction: column; gap: 12px; }
+
+  /* Línea de estado con el conteo de hojas */
+  .pages-status {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 6px;
+    background: var(--surface-2);
+    border: 1.5px solid var(--line);
+    border-radius: 12px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+  .pages-status.active {
+    border-color: var(--brand);
+    background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+  }
+  .pages-status .ps-empty { color: var(--ink-mute); font-weight: 600; }
+  .pages-status .ps-count { color: var(--ink); font-weight: 600; }
+  .pages-status .ps-count b { font-size: 16px; color: var(--brand); }
+  .pages-status .ps-more { color: var(--ink-mute); font-size: 12px; font-weight: 600; }
+
+  /* Rejilla de miniaturas de hojas + botón de agregar */
+  .pages-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .pages-grid.empty { grid-template-columns: 1fr; }
+
+  .page-thumb {
+    position: relative;
+    aspect-ratio: 3 / 4;
+    background: var(--surface);
+    border: 1.5px solid var(--line-strong);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .page-thumb img {
+    width: 100%; height: 100%;
+    object-fit: contain;
+    background: #fff;
+  }
+  .page-num {
+    position: absolute; top: 5px; left: 5px;
+    min-width: 22px; height: 22px; padding: 0 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--brand); color: #fff;
+    font-size: 12px; font-weight: 800;
+    border-radius: 11px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+  }
+  .page-del {
+    position: absolute; top: 4px; right: 4px;
+    width: 24px; height: 24px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.62); color: #fff;
+    border: none; border-radius: 50%;
+    font-size: 13px; line-height: 1; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .page-del:hover { background: var(--brand); }
+
+  /* Botón grande y claro para agregar la siguiente hoja */
+  .page-add {
+    aspect-ratio: 3 / 4;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 8px;
+    background: var(--surface-2);
+    border: 2.5px dashed var(--brand);
+    border-radius: 12px;
+    color: var(--brand);
+    font: 700 13px inherit;
+    text-align: center;
+    padding: 8px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.15s, transform 0.12s;
+  }
+  .page-add:hover { background: color-mix(in srgb, var(--brand) 12%, var(--surface)); }
+  .page-add:active { transform: scale(0.98); }
+  .page-add-ico {
+    width: 40px; height: 40px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--brand); color: #fff;
+    border-radius: 50%;
+    font-size: 26px; font-weight: 400; line-height: 1;
+  }
+  .page-add-txt { padding: 0 4px; }
+  /* En estado vacío, el botón es una banda ancha y más alta como CTA principal */
+  .pages-grid.empty .page-add {
+    aspect-ratio: auto;
+    flex-direction: row;
+    min-height: 120px;
+    font-size: 15px;
+  }
+
+  .pages-tip {
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .pages-tip b { color: var(--ink); }
+
+  .result-note {
+    margin: 12px 0 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+
   .btn-main {
     width: 100%;
     background: var(--ink);
