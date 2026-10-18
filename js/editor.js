@@ -1414,6 +1414,7 @@
   // Para otras herramientas y el acceso directo «Aplicar a mi foto con IA».
   window.editorAbrirCanvas = (c, name) => loadCanvas(c, name || 'imagen.png');
   window.editorAbrirIA = () => { setTab('ai'); if (!loaded) $('edInput').click(); };
+  $('edAiStart').addEventListener('click', window.editorAbrirIA);
   function loadCanvas(c, name) {
     piece = null; sel = null; updateSelUI();
     Object.keys(adj).forEach(k => adj[k] = 0); filter = 'none'; intensity = 100;
