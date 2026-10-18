@@ -1413,6 +1413,7 @@
   }
   // Para otras herramientas (p. ej. el Creador de personajes).
   window.editorAbrirCanvas = (c, name) => loadCanvas(c, name || 'imagen.png');
+  window.editorAbrirIA = () => { setTab('ai'); if (!loaded) $('edInput').click(); };
   function loadCanvas(c, name) {
     piece = null; sel = null; updateSelUI();
     Object.keys(adj).forEach(k => adj[k] = 0); filter = 'none'; intensity = 100;
@@ -1438,6 +1439,102 @@
     if (!activo()) return;
     const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
     if (item) openFile(item.getAsFile());
+  });
+
+  // ---------- Retoque con IA gratuita (Hugging Face · FLUX.1 Kontext) ----------
+  // Se llama directo desde el navegador a la API Gradio del espacio oficial.
+  // Sin token usa la cuota gratuita anónima; con un token gratis de Hugging
+  // Face (guardado solo en este dispositivo) la cuota es mayor.
+  const HF_API = 'https://black-forest-labs-flux-1-kontext-dev.hf.space/gradio_api';
+  const AI_PROMPTS = {
+    stiletto: 'Put black glossy patent leather Christian Louboutin stiletto high heel pumps with the signature red lacquered soles on her feet, matching the exact pose, angle and position of the feet. Remove a precise section of the glossy black leather from the upper part of the shoe (the vamp area), cutting it away cleanly to reveal the base of the toes and the exact point where the toes emerge from the foot, with realistic skin texture. Keep the pointed toe box completely closed and intact at the tip, not open-toe. Keep everything else in the photo exactly the same. Photorealistic, studio lighting, sharp focus.',
+    unas: 'Paint all visible fingernails and toenails a metallic white color with a glossy chrome reflection. Keep everything else in the photo exactly the same. Photorealistic, sharp focus.',
+    brillo: 'Make the skin of the legs and feet extremely glossy and shiny, like oiled skin with strong specular highlights and physically based (PBR) rendering. Keep the pose, body shape, clothing and background exactly the same. Photorealistic.',
+    gemelos: 'Make the calves of this athletic woman more muscular: enlarge the soleus muscle below the calf and give the gastrocnemius a large teardrop shape, natural and realistic. Keep the pose, clothing, shoes and background exactly the same. Photorealistic.',
+    venas: 'Add natural, skin-colored visible veins on the top of the feet, realistic and subtle. Keep the pose, shoes and background exactly the same. Photorealistic, sharp focus.',
+    fitness: 'Give this woman a fit, athletic fitness physique with a defined, narrow waist and toned legs, without extra upper body muscle. Keep her face, pose, clothing and background exactly the same. Photorealistic.'
+  };
+  let aiBusy = false;
+  try { $('edAiToken').value = localStorage.getItem('edHfToken') || ''; } catch (_) {}
+  $('edAiToken').addEventListener('change', e => { try { localStorage.setItem('edHfToken', e.target.value.trim()); } catch (_) {} });
+  $$('[data-ai]', root).forEach(b => b.addEventListener('click', () => {
+    $('edAiPrompt').value = AI_PROMPTS[b.dataset.ai];
+    $$('[data-ai]', root).forEach(x => x.setAttribute('aria-pressed', x === b));
+  }));
+  async function hfEdit(blob, prompt, token, onStatus) {
+    const auth = token ? { Authorization: 'Bearer ' + token } : {};
+    const fd = new FormData(); fd.append('files', blob, 'foto.png');
+    onStatus('Subiendo la foto…');
+    const up = await fetch(HF_API + '/upload', { method: 'POST', body: fd, headers: auth });
+    if (!up.ok) throw new Error(up.status === 401 ? 'El token de Hugging Face no es válido.' : 'No se pudo subir la foto (' + up.status + ').');
+    const [path] = await up.json();
+    const call = await fetch(HF_API + '/call/infer', {
+      method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, auth),
+      body: JSON.stringify({ data: [{ path, meta: { _type: 'gradio.FileData' } }, prompt, 0, true, 2.5, 28] })
+    });
+    if (!call.ok) throw new Error('La IA no aceptó el pedido (' + call.status + ').');
+    const { event_id } = await call.json();
+    onStatus('La IA está trabajando…');
+    const res = await fetch(HF_API + '/call/infer/' + event_id, { headers: auth });
+    const text = await res.text();
+    // Respuesta en formato SSE: «event: …» seguido de «data: …».
+    let ev = null, out = null, errMsg = null;
+    text.split('\n').forEach(l => {
+      if (l.startsWith('event:')) ev = l.slice(6).trim();
+      else if (l.startsWith('data:')) {
+        const d = l.slice(5).trim();
+        if (ev === 'complete') { try { out = JSON.parse(d); } catch (_) {} }
+        if (ev === 'error') errMsg = d && d !== 'null' ? d.replace(/^"|"$/g, '') : '';
+      }
+    });
+    if (!out) {
+      throw new Error(errMsg ? errMsg : 'La IA gratuita está ocupada o se terminó la cuota de hoy. Prueba en unos minutos, o agrega un token gratis de Hugging Face para tener más usos.');
+    }
+    const file = out[0], url = file && (file.url || (file.path && HF_API + '/file=' + file.path));
+    if (!url) throw new Error('La IA no devolvió una imagen.');
+    onStatus('Descargando el resultado…');
+    const img = await fetch(url, { headers: auth });
+    if (!img.ok) throw new Error('No se pudo descargar el resultado (' + img.status + ').');
+    return img.blob();
+  }
+  $('edAiRun').addEventListener('click', async () => {
+    if (!loaded) { toast('Primero abre una foto.'); return; }
+    const prompt = $('edAiPrompt').value.trim();
+    if (!prompt) { toast('Elige un cambio o escribe una instrucción.'); return; }
+    if (aiBusy) return;
+    commitPiece();
+    aiBusy = true;
+    const btn = $('edAiRun'), status = $('edAiStatus'), t0 = Date.now();
+    btn.disabled = true;
+    let phase = 'Preparando…';
+    const tick = setInterval(() => { status.textContent = `${phase} (${Math.round((Date.now() - t0) / 1000)} s)`; }, 500);
+    try {
+      // Se envía lo que se ve (foto con ajustes + trazos), máx. 1024 px.
+      const k = Math.min(1, 1024 / Math.max(base.width, base.height));
+      const send = mk(Math.round(base.width * k), Math.round(base.height * k)), sc = send.getContext('2d');
+      sc.drawImage(adjCanvas, 0, 0, send.width, send.height); sc.drawImage(drawLayer, 0, 0, send.width, send.height);
+      const blob = await new Promise(r => send.toBlob(r, 'image/png'));
+      const src = base;
+      const outBlob = await hfEdit(blob, prompt, $('edAiToken').value.trim(), m => { phase = m; });
+      if (base !== src) throw new Error('La foto cambió mientras la IA trabajaba. Vuelve a intentarlo.');
+      const bmp = await createImageBitmap(outBlob);
+      // El resultado reemplaza a la foto (con su tamaño original); Deshacer lo revierte.
+      const nb = mk(src.width, src.height);
+      nb.getContext('2d').drawImage(bmp, 0, 0, src.width, src.height);
+      Object.keys(adj).forEach(key => adj[key] = 0); filter = 'none'; intensity = 100; syncAdjustControls();
+      drawLayer = mk(nb.width, nb.height);
+      setBase(nb); pushHistory(); render();
+      phase = '';
+      clearInterval(tick);
+      status.textContent = `¡Listo en ${Math.round((Date.now() - t0) / 1000)} s! Si no te gusta, pulsa Deshacer o vuelve a aplicar.`;
+    } catch (err) {
+      clearInterval(tick);
+      console.error(err);
+      status.textContent = '⚠️ ' + (err.message || err);
+    } finally {
+      clearInterval(tick);
+      aiBusy = false; btn.disabled = false;
+    }
   });
 
   // ---------- Guardar / compartir ----------
