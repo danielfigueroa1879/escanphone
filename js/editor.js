@@ -316,7 +316,7 @@
   // pellizco del trackpad para acercar; barra espaciadora, botón central o la
   // herramienta Mano para mover.
   const touches = new Map();
-  let gesture = null, pan = null, spaceDown = false;
+  let gesture = null, pan = null, spaceDown = false, shiftDown = false;
   const stagePt = e => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   function cancelStroke() {
     if (pointerId === null) return;
@@ -541,25 +541,41 @@
   // tira de «Recortes guardados», que persiste en el dispositivo.
   let selMode = null, selAnchor = null, selOffset = null, selShape = 'rect';
   const roundR = r => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.max(1, Math.round(r.w)), h: Math.max(1, Math.round(r.h)) });
-  function hitBox(p, r) {
-    const tol = 22 * pxScale(), corners = cropCorners(r);
-    const hit = corners.findIndex(([x, y]) => Math.abs(p.x - x) < tol && Math.abs(p.y - y) < tol);
-    if (hit >= 0) return { corner: hit, anchor: { x: corners[3 - hit][0], y: corners[3 - hit][1] } };
-    const m = tol / 2;   // margen: tocar justo el borde también lo agarra
-    if (p.x > r.x - m && p.x < r.x + r.w + m && p.y > r.y - m && p.y < r.y + r.h + m) return { inside: true };
-    return null;
-  }
   function selPath(ctx, z, ox = 0, oy = 0) {
     ctx.beginPath();
     if (z.shape === 'ellipse') ctx.ellipse(z.x + z.w / 2 + ox, z.y + z.h / 2 + oy, z.w / 2, z.h / 2, 0, 0, Math.PI * 2);
     else if (z.shape === 'lasso') { z.pts.forEach((q, i) => i ? ctx.lineTo(q.x + ox, q.y + oy) : ctx.moveTo(q.x + ox, q.y + oy)); ctx.closePath(); }
     else ctx.rect(z.x + ox, z.y + oy, z.w, z.h);
   }
+  // Lo pegado se guarda por su centro (cx, cy), tamaño y ángulo, para poder
+  // girarlo sobre su propio centro. Los toques se pasan a coordenadas locales
+  // de la pieza (sin giro) para saber si se tocó una esquina, el asa o el centro.
+  const pieceLocal = p => {
+    const dx = p.x - piece.cx, dy = p.y - piece.cy, c = Math.cos(-piece.rot), sn = Math.sin(-piece.rot);
+    return { x: dx * c - dy * sn, y: dx * sn + dy * c };
+  };
+  const pieceWorld = (lx, ly) => {
+    const c = Math.cos(piece.rot), sn = Math.sin(piece.rot);
+    return { x: piece.cx + lx * c - ly * sn, y: piece.cy + lx * sn + ly * c };
+  };
+  const rotHandleDist = () => 34 * pxScale();
+  function pieceHit(p) {
+    const l = pieceLocal(p), tol = 22 * pxScale(), hw = piece.w / 2, hh = piece.h / 2;
+    if (Math.hypot(l.x, l.y + hh + rotHandleDist()) < tol) return 'rotate';
+    if ([[-hw, -hh], [hw, -hh], [-hw, hh], [hw, hh]].some(([x, y]) => Math.abs(l.x - x) < tol && Math.abs(l.y - y) < tol)) return 'resize';
+    if (Math.abs(l.x) < hw + tol / 2 && Math.abs(l.y) < hh + tol / 2) return 'move';
+    return null;
+  }
+  const degOf = r => ((Math.round(r * 180 / Math.PI) % 360) + 360) % 360;
+  function pieceStatus() {
+    $('edStatusSize').textContent = `Pegado ${Math.round(piece.w)} × ${Math.round(piece.h)} px · ${degOf(piece.rot)}°`;
+  }
   function selDown(p) {
     if (piece) {
-      const h = hitBox(p, piece);
-      if (h && h.anchor) { selMode = 'resize'; selAnchor = h.anchor; return; }
-      if (h) { selMode = 'move'; selOffset = { x: p.x - piece.x, y: p.y - piece.y }; return; }
+      const h = pieceHit(p);
+      if (h === 'rotate') { selMode = 'rotate'; return; }
+      if (h === 'resize') { selMode = 'resize'; return; }
+      if (h === 'move') { selMode = 'move'; selOffset = { x: p.x - piece.cx, y: p.y - piece.cy }; return; }
       commitPiece();
     }
     const q = { x: clamp(p.x, 0, base.width), y: clamp(p.y, 0, base.height) };
@@ -578,16 +594,21 @@
       const xs = sel.pts.map(q => q.x), ys = sel.pts.map(q => q.y);
       sel.x = Math.min(...xs); sel.y = Math.min(...ys); sel.w = Math.max(...xs) - sel.x; sel.h = Math.max(...ys) - sel.y;
     } else if (selMode === 'move' && piece) {
-      piece.x = p.x - selOffset.x; piece.y = p.y - selOffset.y;
+      piece.cx = p.x - selOffset.x; piece.cy = p.y - selOffset.y;
     } else if (selMode === 'resize' && piece) {
-      let w = Math.abs(p.x - selAnchor.x), h = Math.abs(p.y - selAnchor.y);
-      if ($('edKeepRatio').checked) { const r = piece.ow / piece.oh; if (w / Math.max(h, 1) > r) h = w / r; else w = h * r; }
-      w = Math.max(w, 6); h = Math.max(h, 6);
-      piece.x = p.x < selAnchor.x ? selAnchor.x - w : selAnchor.x;
-      piece.y = p.y < selAnchor.y ? selAnchor.y - h : selAnchor.y;
+      // Se agranda o achica desde el centro, respetando el giro.
+      const l = pieceLocal(p);
+      let w = Math.max(6, Math.abs(l.x) * 2), h = Math.max(6, Math.abs(l.y) * 2);
+      if ($('edKeepRatio').checked) { const k = Math.max(w / piece.ow, h / piece.oh); w = piece.ow * k; h = piece.oh * k; }
       piece.w = w; piece.h = h;
+    } else if (selMode === 'rotate' && piece) {
+      let r = Math.atan2(p.y - piece.cy, p.x - piece.cx) + Math.PI / 2;
+      // Imán a 0°, 90°, 180° y 270° (y a cada 15° con Shift en el PC).
+      const step = shiftDown ? Math.PI / 12 : Math.PI / 2, snapped = Math.round(r / step) * step;
+      if (shiftDown || Math.abs(r - snapped) < 4 * Math.PI / 180) r = snapped;
+      piece.rot = r;
     }
-    if (piece) $('edStatusSize').textContent = `Pegado ${Math.round(piece.w)} × ${Math.round(piece.h)} px`;
+    if (piece) pieceStatus();
     else if (sel) $('edStatusSize').textContent = `Zona ${Math.round(sel.w)} × ${Math.round(sel.h)} px`;
   }
   function selUp() {
@@ -597,9 +618,9 @@
   function drawPiece(ctx, src) {
     ctx.save();
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
-    if (piece.flip) { ctx.translate(piece.x + piece.w, piece.y); ctx.scale(-1, 1); }
-    else ctx.translate(piece.x, piece.y);
-    ctx.drawImage(src, 0, 0, piece.w, piece.h);
+    ctx.translate(piece.cx, piece.cy); ctx.rotate(piece.rot);
+    ctx.scale(piece.flip ? -1 : 1, piece.flipV ? -1 : 1);
+    ctx.drawImage(src, -piece.w / 2, -piece.h / 2, piece.w, piece.h);
     ctx.restore();
   }
   function drawSelOverlay(z) {
@@ -607,13 +628,24 @@
     vctx.save();
     vctx.lineWidth = 1.5 * s;
     vctx.setLineDash([6 * s, 4 * s]);
-    const outline = () => { if (piece) { vctx.beginPath(); vctx.rect(z.x, z.y, z.w, z.h); } else selPath(vctx, z); };
+    const hw = piece ? piece.w / 2 : 0, hh = piece ? piece.h / 2 : 0, rd = piece ? rotHandleDist() : 0;
+    const corners = piece ? [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => pieceWorld(x, y)) : [];
+    const outline = () => {
+      if (!piece) { selPath(vctx, z); return; }
+      vctx.beginPath(); corners.forEach((q, i) => i ? vctx.lineTo(q.x, q.y) : vctx.moveTo(q.x, q.y)); vctx.closePath();
+    };
     vctx.strokeStyle = '#000'; outline(); vctx.stroke();
     vctx.lineDashOffset = 6 * s; vctx.strokeStyle = '#fff'; outline(); vctx.stroke();
     if (piece) {
-      vctx.setLineDash([]); vctx.fillStyle = '#fff'; vctx.strokeStyle = '#000'; vctx.lineWidth = 1 * s;
+      // Asa de giro: una línea desde el borde superior hasta un círculo.
+      const top = pieceWorld(0, -hh), knob = pieceWorld(0, -hh - rd);
+      vctx.setLineDash([]); vctx.lineWidth = 1.5 * s; vctx.strokeStyle = '#fff';
+      vctx.beginPath(); vctx.moveTo(top.x, top.y); vctx.lineTo(knob.x, knob.y); vctx.stroke();
+      vctx.fillStyle = '#fff'; vctx.strokeStyle = '#000'; vctx.lineWidth = 1 * s;
+      vctx.beginPath(); vctx.arc(knob.x, knob.y, 9 * s, 0, Math.PI * 2); vctx.fill(); vctx.stroke();
+      vctx.beginPath(); vctx.arc(knob.x, knob.y, 4.5 * s, -Math.PI * .9, Math.PI * .5); vctx.stroke();
       const hs = 14 * s;
-      cropCorners(z).forEach(([x, y]) => { vctx.fillRect(x - hs / 2, y - hs / 2, hs, hs); vctx.strokeRect(x - hs / 2, y - hs / 2, hs, hs); });
+      corners.forEach(q => { vctx.fillRect(q.x - hs / 2, q.y - hs / 2, hs, hs); vctx.strokeRect(q.x - hs / 2, q.y - hs / 2, hs, hs); });
     }
     vctx.restore();
   }
@@ -637,9 +669,10 @@
     const k = Math.min(1, base.width * .9 / w, base.height * .9 / h); w *= k; h *= k;
     const off = Math.round(Math.min(base.width, base.height) * 0.05);
     const x = clamp(clip.x + off, 0, Math.max(0, base.width - w)), y = clamp(clip.y + off, 0, Math.max(0, base.height - h));
-    piece = { img: clip.img, x, y, w, h, ow: w, oh: h, flip: false };
+    piece = { img: clip.img, cx: x + w / 2, cy: y + h / 2, w, h, ow: w, oh: h, rot: 0, flip: false, flipV: false };
     sel = null; updateSelUI(); render();
-    $('edStatusTool').textContent = 'Arrastra lo pegado para moverlo y sus esquinas para cambiar el tamaño';
+    $('edStatusTool').textContent = 'Arrastra para mover, las esquinas para el tamaño y el círculo de arriba para girar';
+    pieceStatus();
   }
   function commitPiece() {
     if (!piece) return;
@@ -655,7 +688,7 @@
     $('edPaste').disabled = !clip;
     $('edPieceRow').hidden = !piece;
     $('edSelHint').textContent = piece
-      ? 'Mueve lo pegado y arrastra sus esquinas para agrandarlo o achicarlo. Luego pulsa «Fijar aquí».'
+      ? 'Mueve lo pegado, arrastra sus esquinas para cambiar el tamaño y el círculo de arriba para girarlo sobre su centro. Luego pulsa «Fijar aquí».'
       : sel ? 'Zona marcada. Pulsa «Copiar zona» y luego «Pegar» o toca su recorte guardado.'
       : selShape === 'lasso' ? 'Dibuja con el dedo o el mouse el contorno de lo que quieres copiar.'
       : 'Arrastra sobre la foto para marcar la zona que quieres copiar.';
@@ -670,6 +703,12 @@
   $('edPieceApply').addEventListener('click', commitPiece);
   $('edPieceCancel').addEventListener('click', discardPiece);
   $('edPieceFlip').addEventListener('click', () => { if (piece) { piece.flip = !piece.flip; render(); } });
+  $('edPieceFlipV').addEventListener('click', () => { if (piece) { piece.flipV = !piece.flipV; render(); } });
+  $('edPieceRot').addEventListener('click', () => {
+    if (!piece) return;
+    piece.rot = Math.round((piece.rot + Math.PI / 2) / (Math.PI / 2)) * (Math.PI / 2);
+    pieceStatus(); render();
+  });
 
   // ---------- Recortes guardados (IndexedDB, solo en este dispositivo) ----------
   const MAX_CLIPS = 40;
@@ -1213,6 +1252,7 @@
     if (e.key === 'Enter' && tool === 'crop') $('edApplyCrop').click();
   });
 
+  ['keydown', 'keyup'].forEach(t => document.addEventListener(t, e => { shiftDown = e.shiftKey; }));
   document.addEventListener('keyup', e => {
     if (e.key === ' ' && spaceDown) { spaceDown = false; view.style.cursor = cursorFor(tool); }
   });
