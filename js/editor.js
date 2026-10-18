@@ -1447,7 +1447,9 @@
   // Sin token usa la cuota gratuita anónima; con un token gratis de Hugging
   // Face (guardado solo en este dispositivo) la cuota es mayor.
   const HF_API = 'https://black-forest-labs-flux-1-kontext-dev.hf.space/gradio_api';
-  const AI_PROMPTS = {
+  // Botones de IA del usuario: cada uno guarda un nombre y un prompt. Se
+  // guardan en este dispositivo; la primera vez se crean los de ejemplo.
+  const AI_DEFAULTS = {
     stiletto: 'Put black glossy patent leather Christian Louboutin stiletto high heel pumps with the signature red lacquered soles on her feet, matching the exact pose, angle and position of the feet. Remove a precise section of the glossy black leather from the upper part of the shoe (the vamp area), cutting it away cleanly to reveal the base of the toes and the exact point where the toes emerge from the foot, with realistic skin texture. Keep the pointed toe box completely closed and intact at the tip, not open-toe. Keep everything else in the photo exactly the same. Photorealistic, studio lighting, sharp focus.',
     unas: 'Paint all visible fingernails and toenails a metallic white color with a glossy chrome reflection. Keep everything else in the photo exactly the same. Photorealistic, sharp focus.',
     brillo: 'Make the skin of the legs and feet extremely glossy and shiny, like oiled skin with strong specular highlights and physically based (PBR) rendering. Keep the pose, body shape, clothing and background exactly the same. Photorealistic.',
@@ -1455,13 +1457,72 @@
     venas: 'Add natural, skin-colored visible veins on the top of the feet, realistic and subtle. Keep the pose, shoes and background exactly the same. Photorealistic, sharp focus.',
     fitness: 'Give this woman a fit, athletic fitness physique with a defined, narrow waist and toned legs, without extra upper body muscle. Keep her face, pose, clothing and background exactly the same. Photorealistic.'
   };
-  let aiBusy = false;
+  const AI_DEFAULT_NAMES = {
+    stiletto: '👠 Stiletto suela roja', unas: '💅 Uñas blanco metálico', brillo: '✨ Piel con brillo extremo',
+    gemelos: '🦵 Sóleo y gemelo en gota', venas: '🦶 Venas naturales en pies', fitness: '🏋️‍♀️ Físico fitness, cintura marcada'
+  };
+  const AI_KEY = 'edAiBotones';
+  let aiButtons = null, aiBusy = false, aiEditing = null, aiTested = '';
+  try { aiButtons = JSON.parse(localStorage.getItem(AI_KEY) || 'null'); } catch (_) {}
+  if (!Array.isArray(aiButtons)) aiButtons = Object.keys(AI_DEFAULTS).map(k => ({ id: k, name: AI_DEFAULT_NAMES[k], prompt: AI_DEFAULTS[k] }));
+  const saveAiButtons = () => { try { localStorage.setItem(AI_KEY, JSON.stringify(aiButtons)); } catch (_) {} };
   try { $('edAiToken').value = localStorage.getItem('edHfToken') || ''; } catch (_) {}
   $('edAiToken').addEventListener('change', e => { try { localStorage.setItem('edHfToken', e.target.value.trim()); } catch (_) {} });
-  $$('[data-ai]', root).forEach(b => b.addEventListener('click', () => {
-    $('edAiPrompt').value = AI_PROMPTS[b.dataset.ai];
-    $$('[data-ai]', root).forEach(x => x.setAttribute('aria-pressed', x === b));
-  }));
+
+  function renderAiButtons(runningId) {
+    const wrap = $('edAiPresets');
+    wrap.innerHTML = '';
+    aiButtons.forEach(bt => {
+      const el = document.createElement('div');
+      el.className = 'ed-ai-btn' + (bt.id === runningId ? ' running' : '');
+      const go = document.createElement('button');
+      go.type = 'button'; go.className = 'ed-ai-go'; go.textContent = bt.name; go.title = 'Aplicar: ' + bt.prompt;
+      go.addEventListener('click', () => { if (!aiEditing) $('edAiPrompt').value = bt.prompt; aiRun(bt.prompt, bt.id); });
+      const ed = document.createElement('button');
+      ed.type = 'button'; ed.className = 'ed-ai-edit'; ed.textContent = '✎'; ed.title = 'Ajustar el prompt de este botón';
+      ed.addEventListener('click', () => startEdit(bt));
+      el.append(go, ed);
+      wrap.append(el);
+    });
+  }
+  // Ajustar un botón: carga su nombre y prompt; se puede probar y guardar.
+  function startEdit(bt) {
+    aiEditing = bt.id;
+    $('edAiPrompt').value = bt.prompt; $('edAiName').value = bt.name;
+    $('edAiPromptLabel').textContent = 'Prompt del botón «' + bt.name + '»';
+    $('edAiSave').textContent = '💾 Guardar cambios';
+    $('edAiDelete').hidden = false; $('edAiSaveBox').hidden = false;
+    $('edAiPrompt').focus();
+  }
+  function endEdit() {
+    aiEditing = null;
+    $('edAiPromptLabel').textContent = 'Prompt nuevo (en inglés funciona mejor)';
+    $('edAiSave').textContent = '💾 Guardar como botón';
+    $('edAiDelete').hidden = true; $('edAiSaveBox').hidden = true; $('edAiName').value = '';
+  }
+  // Un botón nuevo solo se puede guardar después de probar su prompt.
+  $('edAiPrompt').addEventListener('input', () => {
+    if (!aiEditing) $('edAiSaveBox').hidden = $('edAiPrompt').value.trim() !== aiTested || !aiTested;
+  });
+  $('edAiSave').addEventListener('click', () => {
+    const prompt = $('edAiPrompt').value.trim(), name = $('edAiName').value.trim() || prompt.slice(0, 28);
+    if (!prompt) return;
+    if (aiEditing) {
+      const bt = aiButtons.find(x => x.id === aiEditing);
+      if (bt) { bt.name = name; bt.prompt = prompt; }
+      toast('Botón actualizado.');
+    } else {
+      aiButtons.push({ id: 'b' + Date.now().toString(36), name, prompt });
+      toast('Botón guardado. Desde ahora basta con tocarlo.');
+    }
+    saveAiButtons(); endEdit(); renderAiButtons();
+  });
+  $('edAiDelete').addEventListener('click', () => {
+    if (!aiEditing || !confirm('¿Eliminar este botón?')) return;
+    aiButtons = aiButtons.filter(x => x.id !== aiEditing);
+    saveAiButtons(); endEdit(); renderAiButtons();
+  });
+  $('edAiCancel').addEventListener('click', () => { endEdit(); $('edAiPrompt').value = ''; aiTested = ''; });
   async function hfEdit(blob, prompt, token, onStatus) {
     const auth = token ? { Authorization: 'Bearer ' + token } : {};
     const fd = new FormData(); fd.append('files', blob, 'foto.png');
@@ -1498,13 +1559,13 @@
     if (!img.ok) throw new Error('No se pudo descargar el resultado (' + img.status + ').');
     return img.blob();
   }
-  $('edAiRun').addEventListener('click', async () => {
+  $('edAiRun').addEventListener('click', () => aiRun($('edAiPrompt').value.trim(), null));
+  async function aiRun(prompt, buttonId) {
     if (!loaded) { toast('Primero abre una foto.'); return; }
-    const prompt = $('edAiPrompt').value.trim();
-    if (!prompt) { toast('Elige un cambio o escribe una instrucción.'); return; }
+    if (!prompt) { toast('Escribe un prompt o toca uno de tus botones.'); return; }
     if (aiBusy) return;
     commitPiece();
-    aiBusy = true;
+    aiBusy = true; renderAiButtons(buttonId);
     const btn = $('edAiRun'), status = $('edAiStatus'), t0 = Date.now();
     btn.disabled = true;
     let phase = 'Preparando…';
@@ -1525,18 +1586,26 @@
       Object.keys(adj).forEach(key => adj[key] = 0); filter = 'none'; intensity = 100; syncAdjustControls();
       drawLayer = mk(nb.width, nb.height);
       setBase(nb); pushHistory(); render();
-      phase = '';
       clearInterval(tick);
-      status.textContent = `¡Listo en ${Math.round((Date.now() - t0) / 1000)} s! Si no te gusta, pulsa Deshacer o vuelve a aplicar.`;
+      const secs = Math.round((Date.now() - t0) / 1000);
+      if (!buttonId && !aiEditing) {
+        // Prompt nuevo probado: ahora se puede guardar como botón.
+        aiTested = prompt;
+        $('edAiSaveBox').hidden = false;
+        if (!$('edAiName').value) $('edAiName').value = prompt.slice(0, 28);
+        status.textContent = `¡Listo en ${secs} s! Si te gusta, ponle nombre y guárdalo como botón. Si no, pulsa Deshacer.`;
+      } else {
+        status.textContent = `¡Listo en ${secs} s! Si no te gusta, pulsa Deshacer.`;
+      }
     } catch (err) {
-      clearInterval(tick);
       console.error(err);
       status.textContent = '⚠️ ' + (err.message || err);
     } finally {
       clearInterval(tick);
-      aiBusy = false; btn.disabled = false;
+      aiBusy = false; btn.disabled = false; renderAiButtons();
     }
-  });
+  }
+  renderAiButtons();
 
   // ---------- Guardar / compartir ----------
   let exportUrl = null, exportBlob = null, exportToken = 0;

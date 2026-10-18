@@ -1062,19 +1062,21 @@
 
         <div class="ed-pane" data-pane="ai" hidden>
           <div class="ed-group">
-            <span class="ed-label">Retoque con IA gratuita</span>
-            <p class="ed-hint">Elige un cambio y pulsa «Aplicar». La IA lo dibuja realista sobre tu foto, respetando la pose. Tarda entre 20 s y 1 min.</p>
-            <div class="ed-ai-presets" id="edAiPresets">
-              <button type="button" data-ai="stiletto">👠 Stiletto suela roja</button>
-              <button type="button" data-ai="unas">💅 Uñas blanco metálico</button>
-              <button type="button" data-ai="brillo">✨ Piel con brillo extremo</button>
-              <button type="button" data-ai="gemelos">🦵 Sóleo y gemelo en gota</button>
-              <button type="button" data-ai="venas">🦶 Venas naturales en pies</button>
-              <button type="button" data-ai="fitness">🏋️‍♀️ Físico fitness, cintura marcada</button>
+            <span class="ed-label">Mis botones de IA</span>
+            <p class="ed-hint">Toca un botón y la IA lo aplica a tu foto (20 s a 1 min). Con ✎ ajustas su prompt.</p>
+            <div class="ed-ai-presets" id="edAiPresets"></div>
+            <label class="ed-label" for="edAiPrompt" id="edAiPromptLabel">Prompt nuevo (en inglés funciona mejor)</label>
+            <textarea id="edAiPrompt" rows="5" placeholder="Ej.: long wavy modern hairstyle, keep the face and everything else the same, photorealistic"></textarea>
+            <button class="ed-btn ed-primary" id="edAiRun" type="button">✨ Probar prompt en mi foto</button>
+            <div class="ed-group ed-ai-save" id="edAiSaveBox" hidden>
+              <label class="ed-label" for="edAiName">Nombre del botón</label>
+              <input type="text" id="edAiName" maxlength="40" placeholder="Ej.: 💇‍♀️ Pelo ondulado largo">
+              <div class="ed-row">
+                <button class="ed-btn ed-primary" id="edAiSave" type="button">💾 Guardar como botón</button>
+                <button class="ed-btn" id="edAiDelete" type="button" hidden>🗑 Eliminar</button>
+                <button class="ed-btn" id="edAiCancel" type="button">Cancelar</button>
+              </div>
             </div>
-            <label class="ed-label" for="edAiPrompt">Instrucción para la IA (en inglés funciona mejor)</label>
-            <textarea id="edAiPrompt" rows="5" placeholder="Elige un botón de arriba o escribe lo que quieres cambiar…"></textarea>
-            <button class="ed-btn ed-primary" id="edAiRun" type="button">✨ Aplicar con IA</button>
             <p class="ed-hint" id="edAiStatus"></p>
           </div>
           <details class="ed-ai-token">
