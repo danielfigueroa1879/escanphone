@@ -813,6 +813,220 @@
   </footer>
 </div>
 
+<!-- ============================================================
+     ===============  HERRAMIENTA: EDITOR DE FOTOS  ============
+     Lógica en js/editor.js. Todo se procesa en el dispositivo.
+     ============================================================ -->
+<div class="container view" id="appEditor">
+  <div class="tool-head">
+    <button class="icon-btn back" type="button" onclick="volverInicio()" aria-label="Volver" title="Volver">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="tool-ico">🖌️</div>
+    <div class="tool-txt">
+      <h1>Editor de fotos</h1>
+      <p class="subtitle">Dibuja, escribe, ajusta colores, aplica filtros, recorta y gira tu foto.</p>
+    </div>
+    <button class="icon-btn" type="button" onclick="cambiarTema()" aria-label="Cambiar tema" title="Tema">🌓</button>
+  </div>
+
+  <input type="file" id="edInput" accept="image/*" style="display:none;">
+
+  <div class="card" id="edDropCard">
+    <div class="drop-zone" id="edDrop" onclick="document.getElementById('edInput').click()">
+      <div class="dz-emoji">🖌️</div>
+      <div class="dz-title">Sube tu foto</div>
+      <div class="dz-sub">Toca aquí, arrastra o pega una imagen (JPG, PNG, WebP…)</div>
+    </div>
+  </div>
+
+  <div class="ed-work" id="edWork" hidden>
+    <div class="ed-top">
+      <span class="ed-file" id="edFileName">foto</span>
+      <div class="ed-actions">
+        <button class="ed-btn" type="button" title="Abrir otra foto" onclick="document.getElementById('edInput').click()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 17-5-5-9 8"/></svg>
+          <span class="ed-txt">Otra foto</span>
+        </button>
+        <button class="ed-btn ed-icon" id="edUndo" type="button" title="Deshacer (Ctrl+Z)" aria-label="Deshacer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+        </button>
+        <button class="ed-btn ed-icon" id="edRedo" type="button" title="Rehacer (Ctrl+Shift+Z)" aria-label="Rehacer">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>
+        </button>
+        <button class="ed-btn" id="edCompare" type="button" title="Mantén presionado para ver la foto original">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect x="3" y="5" width="18" height="14" rx="2"/></svg>
+          <span class="ed-txt">Original</span>
+        </button>
+        <button class="ed-btn ed-primary" id="edExport" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+          <span class="ed-txt ed-keep">Guardar</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="ed-main">
+      <nav class="ed-rail" aria-label="Herramientas de edición">
+        <button class="ed-tool" type="button" data-tool="brush" aria-pressed="true" title="Pincel (B)" aria-label="Pincel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L11 15.8 8.2 13Z"/><path d="M7 14.5c-2 0-3.5 1.6-3.5 3.5 0 1.3-.6 2-1.5 2.5 3 .9 7 .3 7.9-2.6.4-1.5-.6-3.4-2.9-3.4Z"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="eraser" aria-pressed="false" title="Borrador de trazos (E)" aria-label="Borrador">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4L11 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+        </button>
+        <hr>
+        <button class="ed-tool" type="button" data-tool="line" aria-pressed="false" title="Línea (L)" aria-label="Línea">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 19 19 5"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="arrow" aria-pressed="false" title="Flecha (A)" aria-label="Flecha">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19 19 5"/><path d="M10 5h9v9"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="rect" aria-pressed="false" title="Rectángulo (R)" aria-label="Rectángulo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="ellipse" aria-pressed="false" title="Círculo / elipse (O)" aria-label="Círculo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="text" aria-pressed="false" title="Texto (T)" aria-label="Texto">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg>
+        </button>
+        <hr>
+        <button class="ed-tool" type="button" data-tool="crop" aria-pressed="false" title="Recortar (C)" aria-label="Recortar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+        </button>
+      </nav>
+
+      <section class="ed-stage-wrap">
+        <div class="ed-stage" id="edStage">
+          <canvas id="edView" width="1" height="1" aria-label="Lienzo de edición"></canvas>
+          <div class="ed-ring" id="edRing" hidden></div>
+        </div>
+        <div class="ed-status">
+          <span id="edStatusTool">Pincel · arrastra sobre la foto para dibujar</span>
+          <span id="edStatusSize"></span>
+        </div>
+      </section>
+
+      <aside class="ed-panel">
+        <div class="ed-tabs" role="tablist">
+          <button class="ed-tab" type="button" role="tab" data-tab="draw" aria-selected="true">Dibujo</button>
+          <button class="ed-tab" type="button" role="tab" data-tab="adjust" aria-selected="false">Ajustes</button>
+          <button class="ed-tab" type="button" role="tab" data-tab="filters" aria-selected="false">Filtros</button>
+          <button class="ed-tab" type="button" role="tab" data-tab="frame" aria-selected="false">Encuadre</button>
+        </div>
+
+        <div class="ed-pane" data-pane="draw">
+          <div class="ed-group">
+            <span class="ed-label">Color</span>
+            <div class="ed-swatches" id="edSwatches"></div>
+          </div>
+          <div class="ed-group">
+            <label class="ed-label" for="edSize">Grosor <output id="edSizeOut">8 px</output></label>
+            <input type="range" id="edSize" min="1" max="80" value="8">
+          </div>
+          <div class="ed-group">
+            <label class="ed-label" for="edOpacity">Opacidad <output id="edOpacityOut">100 %</output></label>
+            <input type="range" id="edOpacity" min="5" max="100" value="100">
+          </div>
+          <label class="ed-check" id="edFillWrap"><input type="checkbox" id="edFill"> Rellenar rectángulos y círculos</label>
+          <div class="ed-group" id="edTextGroup">
+            <label class="ed-label" for="edTextValue">Texto</label>
+            <textarea id="edTextValue" rows="2">Mira aquí</textarea>
+            <div class="ed-row">
+              <select id="edFont" aria-label="Tipo de letra" style="flex:1 1 120px">
+                <option value="sans">Sans</option>
+                <option value="display">Titular</option>
+                <option value="serif">Serif</option>
+                <option value="mono">Mono</option>
+              </select>
+              <label class="ed-check"><input type="checkbox" id="edTextBox"> Fondo</label>
+            </div>
+            <label class="ed-label" for="edTextSize">Tamaño de texto <output id="edTextSizeOut">36 px</output></label>
+            <input type="range" id="edTextSize" min="12" max="160" value="36">
+            <p class="ed-hint">Escribe el texto y toca la foto donde quieras ponerlo.</p>
+          </div>
+          <button class="ed-btn" id="edClear" type="button">Borrar todos los trazos</button>
+        </div>
+
+        <div class="ed-pane" data-pane="adjust" hidden>
+          <div class="ed-group"><label class="ed-label" for="edAdjBrightness">Brillo <output>0</output></label><input type="range" id="edAdjBrightness" data-adj="brightness" min="-100" max="100" value="0"></div>
+          <div class="ed-group"><label class="ed-label" for="edAdjContrast">Contraste <output>0</output></label><input type="range" id="edAdjContrast" data-adj="contrast" min="-100" max="100" value="0"></div>
+          <div class="ed-group"><label class="ed-label" for="edAdjSaturation">Saturación <output>0</output></label><input type="range" id="edAdjSaturation" data-adj="saturation" min="-100" max="100" value="0"></div>
+          <div class="ed-group"><label class="ed-label" for="edAdjWarmth">Temperatura <output>0</output></label><input type="range" id="edAdjWarmth" data-adj="warmth" min="-100" max="100" value="0"></div>
+          <div class="ed-group"><label class="ed-label" for="edAdjVignette">Viñeta <output>0</output></label><input type="range" id="edAdjVignette" data-adj="vignette" min="0" max="100" value="0"></div>
+          <button class="ed-btn" id="edResetAdj" type="button">Restablecer ajustes</button>
+          <p class="ed-hint">Doble clic en un control lo devuelve a cero.</p>
+        </div>
+
+        <div class="ed-pane" data-pane="filters" hidden>
+          <div class="ed-filters" id="edFilters"></div>
+          <div class="ed-group">
+            <label class="ed-label" for="edIntensity">Intensidad <output id="edIntensityOut">100 %</output></label>
+            <input type="range" id="edIntensity" min="0" max="100" value="100">
+          </div>
+        </div>
+
+        <div class="ed-pane" data-pane="frame" hidden>
+          <div class="ed-group">
+            <span class="ed-label">Proporción del recorte</span>
+            <div class="ed-ratios" id="edRatios">
+              <button type="button" data-ratio="free" aria-pressed="true">Libre</button>
+              <button type="button" data-ratio="1">1:1</button>
+              <button type="button" data-ratio="1.3333">4:3</button>
+              <button type="button" data-ratio="1.7778">16:9</button>
+              <button type="button" data-ratio="0.8">4:5</button>
+            </div>
+            <p class="ed-hint">Arrastra las esquinas o el centro del marco. También puedes trazar un marco nuevo.</p>
+            <div class="ed-row">
+              <button class="ed-btn ed-primary" id="edApplyCrop" type="button">Aplicar recorte</button>
+              <button class="ed-btn" id="edResetCrop" type="button">Restablecer</button>
+            </div>
+          </div>
+          <div class="ed-group">
+            <span class="ed-label">Girar y voltear</span>
+            <div class="ed-row">
+              <button class="ed-btn" id="edRotL" type="button" title="Girar 90° a la izquierda">↺ 90°</button>
+              <button class="ed-btn" id="edRotR" type="button" title="Girar 90° a la derecha">↻ 90°</button>
+              <button class="ed-btn" id="edFlipH" type="button">Voltear ↔</button>
+              <button class="ed-btn" id="edFlipV" type="button">Voltear ↕</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <footer class="footer">
+    © 2026 Todos los derechos reservados.<br>
+    Plataforma desarrollada por <span class="autor">Daniel Figueroa Chacama</span>.<br>
+    <span class="rol">Ingeniero en Informática &amp; Ciberseguridad</span>
+  </footer>
+</div>
+
+<!-- Modal: guardar la foto editada -->
+<div class="ed-modal" id="edExportModal" hidden role="dialog" aria-modal="true" aria-labelledby="edExportTitle">
+  <div class="ed-sheet">
+    <header>
+      <h2 id="edExportTitle">Tu foto está lista</h2>
+      <button class="ed-btn ed-icon" id="edCloseExport" type="button" aria-label="Cerrar">✕</button>
+    </header>
+    <div class="ed-sheet-body"><img id="edExportImg" alt="Foto editada"></div>
+    <footer>
+      <div class="ed-row ed-export-opts">
+        <select id="edExportFormat" aria-label="Formato">
+          <option value="jpeg">JPG</option>
+          <option value="png">PNG</option>
+          <option value="webp">WebP</option>
+        </select>
+        <span id="edExportInfo" class="ed-export-info"></span>
+      </div>
+      <div class="ed-row">
+        <button class="ed-btn" id="edShare" type="button" hidden>Compartir</button>
+        <a class="ed-btn ed-primary" id="edDownload" href="#" download="foto-editada.jpg">⬇ Descargar</a>
+      </div>
+    </footer>
+  </div>
+</div>
+
 <!-- Modal cámara -->
 <div class="cam-modal" id="camModal">
   <div class="cam-instr" id="camInstr">Encuadra el documento</div>
@@ -906,5 +1120,7 @@
 <script src="js/tools.js"></script>
 <!-- Suite de Herramientas PDF (módulo independiente, 100% local) -->
 <script src="js/pdftools.js"></script>
+<!-- Editor de fotos (módulo independiente, 100% local) -->
+<script src="js/editor.js"></script>
 </body>
 </html>
