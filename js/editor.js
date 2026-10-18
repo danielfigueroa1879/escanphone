@@ -20,6 +20,8 @@
   const view = $('edView'), vctx = view.getContext('2d');
   const stage = $('edStage'), ring = $('edRing');
   const activo = () => root.classList.contains('active');
+  const FX_TOOLS = ['warp', 'gloss', 'clone', 'blur'];
+  const isFx = t => FX_TOOLS.includes(t);
 
   // Estado
   let base = mk(1, 1);                 // foto (cambia solo con recorte, giro o al abrir)
@@ -58,6 +60,10 @@
     recolor: 'Cambiar color · toca la prenda u objeto que quieres pintar',
     warp: 'Deformar · mantén presionado para agrandar o reducir, o arrastra para empujar',
     gloss: 'Brillo de piel · pinta sobre la piel para darle brillo',
+    clone: 'Tampón de clonar · elige un origen y pinta para copiar esa zona',
+    blur: 'Suavizar · pinta para desenfocar o suavizar la piel',
+    eyedropper: 'Cuentagotas · toca la foto para tomar ese color',
+    hand: 'Mano · arrastra para mover la vista',
     crop: 'Recorte · ajusta el marco y pulsa Aplicar'
   };
 
@@ -136,7 +142,7 @@
     requestAnimationFrame(() => { renderQueued = false; render(); });
   }
   function render() {
-    if (view.width !== base.width || view.height !== base.height) { view.width = base.width; view.height = base.height; fit(); }
+    if (view.width !== base.width || view.height !== base.height) { view.width = base.width; view.height = base.height; zoom = 1; fit(); }
     vctx.globalAlpha = 1; vctx.globalCompositeOperation = 'source-over';
     vctx.clearRect(0, 0, view.width, view.height);
     if (showOriginal) { vctx.drawImage(base, 0, 0); return; }
@@ -146,17 +152,43 @@
     if (tool === 'crop' && crop) drawCropOverlay();
     if (piece) drawPiece(vctx, piece.view, piece.draw);
     if (piece || sel) drawSelOverlay(piece || sel);
+    if (tool === 'clone' && cloneSrc) drawCloneMarker();
   }
 
+  // La foto se muestra a "tamaño ajustado" (fitW × fitH) y encima se aplica
+  // zoom y desplazamiento con transform. Las coordenadas de dibujo salen de
+  // getBoundingClientRect, que ya incluye el zoom, así que todo sigue igual.
+  let zoom = 1, tx = 0, ty = 0, fitW = 1, fitH = 1;
   function fit() {
-    const cs = getComputedStyle(stage);
-    const bw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const bh = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-    if (bw <= 0 || bh <= 0) return;
-    const s = Math.min(bw / view.width, bh / view.height);
-    view.style.width = Math.floor(view.width * s) + 'px';
-    view.style.height = Math.floor(view.height * s) + 'px';
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    if (sw <= 0 || sh <= 0) return;
+    const pad = sw < 600 ? 10 : 16;
+    const s = Math.min((sw - pad * 2) / view.width, (sh - pad * 2) / view.height);
+    fitW = Math.max(1, Math.floor(view.width * s)); fitH = Math.max(1, Math.floor(view.height * s));
+    view.style.width = fitW + 'px'; view.style.height = fitH + 'px';
+    applyView();
   }
+  const maxZoom = () => Math.max(4, view.width / fitW * 6);
+  function applyView() {
+    const sw = stage.clientWidth, sh = stage.clientHeight, w = fitW * zoom, h = fitH * zoom, m = 60;
+    if (zoom <= 1) { zoom = 1; tx = (sw - w) / 2; ty = (sh - h) / 2; }
+    else {
+      tx = w <= sw ? (sw - w) / 2 : clamp(tx, sw - w - m, m);
+      ty = h <= sh ? (sh - h) / 2 : clamp(ty, sh - h - m, m);
+    }
+    view.style.transform = `translate(${tx}px, ${ty}px) scale(${zoom})`;
+    $('edZoomFit').textContent = Math.round(zoom * 100) + '%';
+  }
+  function zoomTo(z, cx, cy) {
+    const sw = stage.clientWidth, sh = stage.clientHeight;
+    if (cx === undefined) { cx = sw / 2; cy = sh / 2; }
+    const nz = clamp(z, 1, maxZoom());
+    tx = cx - (cx - tx) * nz / zoom; ty = cy - (cy - ty) * nz / zoom;
+    zoom = nz; applyView(); requestRender();
+  }
+  $('edZoomIn').addEventListener('click', () => zoomTo(zoom * 1.5));
+  $('edZoomOut').addEventListener('click', () => zoomTo(zoom / 1.5));
+  $('edZoomFit').addEventListener('click', () => zoomTo(1));
   if (window.ResizeObserver) new ResizeObserver(fit).observe(stage);
   else window.addEventListener('resize', fit);
 
@@ -278,15 +310,86 @@
     strokeLayer.getContext('2d').clearRect(0, 0, strokeLayer.width, strokeLayer.height);
   }
 
+  // ---------- Zoom y desplazamiento ----------
+  // Dos dedos: pellizcar para acercar y arrastrar para mover (cancela el
+  // trazo que se había empezado con el primer dedo). PC: rueda del mouse o
+  // pellizco del trackpad para acercar; barra espaciadora, botón central o la
+  // herramienta Mano para mover.
+  const touches = new Map();
+  let gesture = null, pan = null, spaceDown = false;
+  const stagePt = e => { const r = stage.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  function cancelStroke() {
+    if (pointerId === null) return;
+    const mutated = (drawing && tool === 'eraser') || !!fx;
+    if (fx) { clearInterval(fx.timer); fx = null; }
+    drawing = false; cropMode = null;
+    if (selMode === 'new') sel = null;
+    selMode = null; pointerId = null;
+    strokeLayer.getContext('2d').clearRect(0, 0, strokeLayer.width, strokeLayer.height);
+    if (mutated) restore(hIndex); else render();
+  }
+  stage.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'touch') touches.set(e.pointerId, stagePt(e));
+    if (touches.size === 2) {
+      cancelStroke(); ring.hidden = true;
+      const [a, b] = [...touches.values()];
+      gesture = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, z: zoom, tx, ty };
+      e.stopPropagation();
+      return;
+    }
+    if (gesture) { e.stopPropagation(); return; }
+    if (loaded && (tool === 'hand' || spaceDown || e.button === 1)) {
+      e.preventDefault(); e.stopPropagation();
+      const p = stagePt(e);
+      pan = { id: e.pointerId, x: p.x, y: p.y, tx, ty };
+      stage.setPointerCapture(e.pointerId); stage.classList.add('panning');
+    }
+  }, true);
+  stage.addEventListener('pointermove', e => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, stagePt(e));
+    if (gesture && touches.size >= 2) {
+      const [a, b] = [...touches.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      const nz = clamp(gesture.z * d / gesture.d, 1, maxZoom());
+      // El punto de la foto que estaba bajo los dedos sigue bajo los dedos.
+      tx = mx - (gesture.mx - gesture.tx) * nz / gesture.z;
+      ty = my - (gesture.my - gesture.ty) * nz / gesture.z;
+      zoom = nz; applyView(); requestRender();
+      e.stopPropagation(); return;
+    }
+    if (pan && e.pointerId === pan.id) {
+      const p = stagePt(e);
+      tx = pan.tx + p.x - pan.x; ty = pan.ty + p.y - pan.y; applyView();
+      e.stopPropagation();
+    }
+  }, true);
+  function stageUp(e) {
+    touches.delete(e.pointerId);
+    if (gesture) { if (touches.size === 0) gesture = null; e.stopPropagation(); return; }
+    if (pan && e.pointerId === pan.id) { pan = null; stage.classList.remove('panning'); e.stopPropagation(); }
+  }
+  stage.addEventListener('pointerup', stageUp, true);
+  stage.addEventListener('pointercancel', stageUp, true);
+  stage.addEventListener('wheel', e => {
+    if (!loaded) return;
+    e.preventDefault();
+    const p = stagePt(e);
+    const mouseWheel = e.deltaMode === 1 || (e.deltaX === 0 && Math.abs(e.deltaY) >= 40 && Number.isInteger(e.deltaY));
+    if (e.ctrlKey || e.metaKey || mouseWheel) zoomTo(zoom * Math.exp(-e.deltaY * (e.ctrlKey ? .01 : .0015)), p.x, p.y);
+    else { tx -= e.deltaX; ty -= e.deltaY; applyView(); }
+  }, { passive: false });
+
   view.addEventListener('pointerdown', e => {
-    if (!loaded || restoring || showOriginal || pointerId !== null) return;
+    if (!loaded || restoring || showOriginal || pointerId !== null || gesture) return;
     if (e.button !== undefined && e.button > 0) return;
     e.preventDefault();
     const p = toImg(e);
+    if (tool === 'eyedropper' || (e.altKey && (tool === 'brush' || isShape(tool) || tool === 'recolor'))) { pickColor(p); return; }
+    if (tool === 'clone' && (e.altKey || cloneArm || !cloneSrc)) { setCloneSrc(p); return; }
     if (tool === 'crop') { cropDown(p); pointerId = e.pointerId; view.setPointerCapture(e.pointerId); return; }
     if (tool === 'select') { selDown(p); pointerId = e.pointerId; view.setPointerCapture(e.pointerId); requestRender(); return; }
     if (tool === 'recolor') { recolorAt(p); return; }
-    if (tool === 'warp' || tool === 'gloss') { fxDown(p); pointerId = e.pointerId; view.setPointerCapture(e.pointerId); return; }
+    if (isFx(tool)) { fxDown(p); pointerId = e.pointerId; view.setPointerCapture(e.pointerId); return; }
     if (tool === 'text') {
       if (drawText(drawLayer.getContext('2d'), p)) { pushHistory(); render(); }
       else $('edTextValue').focus();
@@ -301,11 +404,12 @@
   });
   view.addEventListener('pointermove', e => {
     updateRing(e);
+    if (tool === 'clone' && cloneSrc) { hoverPt = toImg(e); requestRender(); }
     if (e.pointerId !== pointerId) return;
     const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     if (tool === 'crop') { cropMove(toImg(e)); requestRender(); return; }
     if (tool === 'select') { selMove(toImg(e)); requestRender(); return; }
-    if (tool === 'warp' || tool === 'gloss') { evs.forEach(ev => fxMove(toImg(ev))); return; }
+    if (isFx(tool)) { evs.forEach(ev => fxMove(toImg(ev))); return; }
     if (!drawing) return;
     const c = strokeLayer.getContext('2d');
     if (tool === 'brush') {
@@ -324,7 +428,7 @@
     pointerId = null;
     if (tool === 'crop') { cropMode = null; return; }
     if (tool === 'select') { selUp(); return; }
-    if (tool === 'warp' || tool === 'gloss') { fxUp(); return; }
+    if (isFx(tool)) { fxUp(); return; }
     if (!drawing) return;
     drawing = false;
     const moved = Math.hypot(last.x - start.x, last.y - start.y) > 2;
@@ -344,9 +448,9 @@
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x + .01, b.y); ctx.stroke(); ctx.restore();
   }
   function updateRing(e) {
-    const fx = tool === 'warp' || tool === 'gloss';
-    if (e.pointerType !== 'mouse' || !(tool === 'brush' || tool === 'eraser' || fx)) { ring.hidden = true; return; }
-    const sr = stage.getBoundingClientRect(), d = fx ? +$('edFxSize').value : +$('edSize').value;
+    const fxT = isFx(tool);
+    if (e.pointerType !== 'mouse' || spaceDown || !(tool === 'brush' || tool === 'eraser' || fxT)) { ring.hidden = true; return; }
+    const sr = stage.getBoundingClientRect(), d = fxT ? +$('edFxSize').value : +$('edSize').value;
     ring.hidden = false;
     ring.style.width = ring.style.height = Math.max(d, 4) + 'px';
     ring.style.left = (e.clientX - sr.left) + 'px'; ring.style.top = (e.clientY - sr.top) + 'px';
@@ -652,15 +756,42 @@
     bloat: 'Mantén presionado sobre una zona para agrandarla (p. ej. gemelos o sóleo). Cuanto más tiempo, más crece.',
     pinch: 'Mantén presionado sobre una zona para reducirla (p. ej. marcar la cintura).',
     push: 'Arrastra para empujar la silueta en esa dirección y moldear el contorno.',
-    gloss: 'Pinta sobre la piel de piernas y pies para darle un brillo intenso, tipo aceite. Repite el trazo para más brillo.'
+    gloss: 'Pinta sobre la piel de piernas y pies para darle un brillo intenso, tipo aceite. Repite el trazo para más brillo.',
+    clone: 'Toca «Elegir origen» y luego la zona que quieres copiar (en PC: Alt+clic). Después pinta donde quieras que aparezca. Sirve para borrar objetos o defectos.',
+    blur: 'Pinta para suavizar: alisa la piel, quita grano o desenfoca el fondo. Repite el trazo para más efecto.'
   };
+  let cloneSrc = null, cloneOff = null, cloneArm = false, hoverPt = null;
+  function setCloneSrc(p) {
+    cloneSrc = p; cloneOff = null; cloneArm = false;
+    $('edCloneSrc').textContent = '📍 Elegir origen';
+    toast('Origen fijado. Ahora pinta donde quieras copiarlo.');
+    render();
+  }
+  $('edCloneSrc').addEventListener('click', () => {
+    cloneArm = !cloneArm;
+    $('edCloneSrc').textContent = cloneArm ? 'Toca la foto para elegir el origen…' : '📍 Elegir origen';
+  });
+  function drawCloneMarker() {
+    const s = pxScale(), at = fx && cloneOff ? { x: fx.last.x + cloneOff.x, y: fx.last.y + cloneOff.y }
+      : cloneOff && hoverPt ? { x: hoverPt.x + cloneOff.x, y: hoverPt.y + cloneOff.y } : cloneSrc;
+    const r = fxRadius();
+    vctx.save();
+    vctx.lineWidth = 1.5 * s;
+    [['#000', 0], ['#fff', 1.5 * s]].forEach(([c, o]) => {
+      vctx.strokeStyle = c; vctx.beginPath(); vctx.arc(at.x, at.y, Math.max(r - o, 2), 0, Math.PI * 2);
+      vctx.moveTo(at.x - 8 * s, at.y); vctx.lineTo(at.x + 8 * s, at.y); vctx.moveTo(at.x, at.y - 8 * s); vctx.lineTo(at.x, at.y + 8 * s);
+      vctx.stroke();
+    });
+    vctx.restore();
+  }
   function fxDown(p) {
     const W = base.width, H = base.height;
     const nb = mk(W, H), ctx = nb.getContext('2d', { willReadFrequently: true });
     ctx.drawImage(base, 0, 0);
     base = nb; baseData = ctx.getImageData(0, 0, W, H);
     fx = { ctx, last: p, orig: null, mask: null, timer: null };
-    if (tool === 'gloss') { fx.orig = new Uint8ClampedArray(baseData.data); fx.mask = new Float32Array(W * H); }
+    if (tool !== 'warp') { fx.orig = new Uint8ClampedArray(baseData.data); fx.mask = new Float32Array(W * H); }
+    if (tool === 'clone' && !cloneOff) cloneOff = { x: cloneSrc.x - p.x, y: cloneSrc.y - p.y };
     fxDab(p, p);
     if (tool === 'warp' && warpMode !== 'push') fx.timer = setInterval(() => fxDab(fx.last, fx.last), 50);
   }
@@ -687,7 +818,48 @@
     const bw = x1 - x0, bh = y1 - y0;
     if (bw <= 0 || bh <= 0) return;
     const d = baseData.data, R2 = R * R;
-    if (tool === 'gloss') {
+    if (tool === 'clone') {
+      // Copia desde el origen (foto al empezar el trazo) con borde suave.
+      const ox = Math.round(cloneOff.x), oy = Math.round(cloneOff.y), o = fx.orig;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const sx = x + ox, sy = y + oy;
+        if (sx < 0 || sy < 0 || sx >= W || sy >= H) continue;
+        const r = Math.sqrt((x - c.x) * (x - c.x) + (y - c.y) * (y - c.y));
+        if (r >= R) continue;
+        const j = y * W + x, f = Math.min(1, (1 - r / R) * 2.5) * k;
+        if (f <= fx.mask[j]) continue;
+        fx.mask[j] = f;
+        const i = j * 4, si = (sy * W + sx) * 4;
+        for (let ch = 0; ch < 4; ch++) d[i + ch] = o[i + ch] + (o[si + ch] - o[i + ch]) * f;
+      }
+    } else if (tool === 'blur') {
+      // Desenfoque de caja (imagen integral) sobre la foto al empezar el trazo.
+      const rad = Math.max(1, Math.round(R * (.04 + .14 * k))), o = fx.orig;
+      const ax0 = Math.max(0, x0 - rad), ay0 = Math.max(0, y0 - rad), ax1 = Math.min(W, x1 + rad), ay1 = Math.min(H, y1 + rad);
+      const aw = ax1 - ax0, ah = ay1 - ay0, sum = new Float64Array((aw + 1) * (ah + 1) * 4);
+      for (let y = 0; y < ah; y++) {
+        const rs = [0, 0, 0, 0];
+        for (let x = 0; x < aw; x++) {
+          const i = ((ay0 + y) * W + ax0 + x) * 4, si = ((y + 1) * (aw + 1) + x + 1) * 4, up = (y * (aw + 1) + x + 1) * 4;
+          for (let ch = 0; ch < 4; ch++) { rs[ch] += o[i + ch]; sum[si + ch] = sum[up + ch] + rs[ch]; }
+        }
+      }
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const r2 = (x - c.x) * (x - c.x) + (y - c.y) * (y - c.y);
+        if (r2 >= R2) continue;
+        const j = y * W + x, f = (1 - r2 / R2) ** 1.5 * (.5 + .5 * k);
+        if (f <= fx.mask[j]) continue;
+        fx.mask[j] = f;
+        const bx0 = Math.max(ax0, x - rad) - ax0, by0 = Math.max(ay0, y - rad) - ay0;
+        const bx1 = Math.min(ax1, x + rad + 1) - ax0, by1 = Math.min(ay1, y + rad + 1) - ay0;
+        const n = (bx1 - bx0) * (by1 - by0), i = j * 4;
+        const A = (by0 * (aw + 1) + bx0) * 4, B = (by0 * (aw + 1) + bx1) * 4, C = (by1 * (aw + 1) + bx0) * 4, D = (by1 * (aw + 1) + bx1) * 4;
+        for (let ch = 0; ch < 4; ch++) {
+          const avg = (sum[D + ch] - sum[B + ch] - sum[C + ch] + sum[A + ch]) / n;
+          d[i + ch] = o[i + ch] + (avg - o[i + ch]) * f;
+        }
+      }
+    } else if (tool === 'gloss') {
       for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
         const r2 = (x - c.x) * (x - c.x) + (y - c.y) * (y - c.y);
         if (r2 >= R2) continue;
@@ -739,26 +911,55 @@
     $('edFxHint').textContent = FX_HINTS[warpMode];
   }));
   $('edFxSize').addEventListener('input', e => $('edFxSizeOut').textContent = e.target.value + ' px');
-  $('edFxStrength').addEventListener('input', e => $('edFxStrengthOut').textContent = e.target.value + ' %');
+  // Cada herramienta recuerda su propia intensidad (el tampón parte al 100 %).
+  const fxStrength = { warp: 50, gloss: 50, clone: 100, blur: 60 };
+  $('edFxStrength').addEventListener('input', e => {
+    $('edFxStrengthOut').textContent = e.target.value + ' %';
+    if (isFx(tool)) fxStrength[tool] = +e.target.value;
+  });
+
+  // ---------- Cuentagotas ----------
+  let prevTool = 'brush';
+  const isShape = t => ['line', 'arrow', 'rect', 'ellipse', 'text'].includes(t);
+  function pickColor(p) {
+    const x = clamp(Math.floor(p.x) - 1, 0, view.width - 3), y = clamp(Math.floor(p.y) - 1, 0, view.height - 3);
+    const tmp = mk(3, 3), tc = tmp.getContext('2d');
+    tc.drawImage(adjCanvas, x, y, 3, 3, 0, 0, 3, 3); tc.drawImage(drawLayer, x, y, 3, 3, 0, 0, 3, 3);
+    const d = tc.getImageData(0, 0, 3, 3).data;
+    let r = 0, g = 0, b = 0;
+    for (let i = 0; i < 36; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+    const hex = '#' + [r, g, b].map(v => Math.round(v / 9).toString(16).padStart(2, '0')).join('');
+    setColor(hex); $('edCustomColor').value = hex;
+    toast('Color tomado: ' + hex);
+    if (tool === 'eyedropper') setTool(prevTool);
+  }
 
   // ---------- UI: herramientas, pestañas ----------
+  const cursorFor = t => t === 'text' ? 'text' : t === 'recolor' ? 'copy' : t === 'hand' ? 'grab'
+    : (t === 'brush' || t === 'eraser' || isFx(t)) ? 'none' : 'crosshair';
   function setTool(t) {
     if (tool === 'select' && t !== 'select') { commitPiece(); sel = null; }
+    if (t === 'eyedropper' && tool !== 'eyedropper') prevTool = tool;
     tool = t;
     $$('.ed-tool', root).forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
     $('edStatusTool').textContent = TOOL_HINTS[t];
-    view.style.cursor = t === 'text' ? 'text' : t === 'recolor' ? 'copy' : t === 'crop' ? 'crosshair' : (t === 'brush' || t === 'eraser' || t === 'warp' || t === 'gloss') ? 'none' : 'crosshair';
+    view.style.cursor = cursorFor(t);
     if (t === 'crop') { crop = fullCrop(); setTab('frame', true); }
     else { crop = null; $('edStatusSize').textContent = `${base.width} × ${base.height} px`; if (currentTab === 'frame') setTab('draw', true); }
     $('edTextGroup').hidden = t !== 'text';
     $('edSelGroup').hidden = t !== 'select';
     $('edRecolorGroup').hidden = t !== 'recolor';
-    const fxTool = t === 'warp' || t === 'gloss';
+    const fxTool = isFx(t), noPaint = t === 'select' || t === 'hand' || t === 'eyedropper';
     $('edFxGroup').hidden = !fxTool;
     $('edWarpModes').hidden = t !== 'warp';
-    if (fxTool) $('edFxHint').textContent = FX_HINTS[t === 'gloss' ? 'gloss' : warpMode];
-    $('edColorGroup').hidden = t === 'select' || t === 'eraser' || fxTool;
-    $('edSizeGroup').hidden = $('edOpacityGroup').hidden = $('edClear').hidden = t === 'select' || t === 'recolor' || fxTool;
+    $('edCloneSrc').hidden = t !== 'clone';
+    cloneArm = false; $('edCloneSrc').textContent = '📍 Elegir origen';
+    if (fxTool) {
+      $('edFxHint').textContent = FX_HINTS[t === 'warp' ? warpMode : t];
+      $('edFxStrength').value = fxStrength[t]; $('edFxStrengthOut').textContent = fxStrength[t] + ' %';
+    }
+    $('edColorGroup').hidden = t === 'eraser' || fxTool || (noPaint && t !== 'eyedropper');
+    $('edSizeGroup').hidden = $('edOpacityGroup').hidden = $('edClear').hidden = noPaint || t === 'recolor' || fxTool;
     $('edFillWrap').hidden = !(t === 'rect' || t === 'ellipse');
     render();
   }
@@ -886,11 +1087,25 @@
     if (mod && e.key.toLowerCase() === 'c' && !typing && tool === 'select' && sel) { e.preventDefault(); copySel(); return; }
     if (mod && e.key.toLowerCase() === 'v' && !typing && clip) { e.preventDefault(); pasteClip(); return; }
     if (e.key === 'Enter' && piece) { commitPiece(); return; }
+    if (mod && !typing && (e.key === '+' || e.key === '=')) { e.preventDefault(); zoomTo(zoom * 1.5); return; }
+    if (mod && !typing && e.key === '-') { e.preventDefault(); zoomTo(zoom / 1.5); return; }
+    if (mod && !typing && e.key === '0') { e.preventDefault(); zoomTo(1); return; }
+    if (e.key === ' ' && !typing) { e.preventDefault(); if (!spaceDown) { spaceDown = true; ring.hidden = true; view.style.cursor = 'grab'; } return; }
+    if ((e.key === '[' || e.key === ']') && !typing) {
+      const sl = isFx(tool) ? $('edFxSize') : tool === 'text' ? $('edTextSize') : $('edSize');
+      const v = +sl.value, step = Math.max(1, Math.round(v * .15));
+      sl.value = e.key === ']' ? v + step : v - step; sl.dispatchEvent(new Event('input'));
+      return;
+    }
     if (typing || mod || e.altKey) return;
-    const map = { b: 'brush', e: 'eraser', l: 'line', a: 'arrow', r: 'rect', o: 'ellipse', t: 'text', s: 'select', k: 'recolor', d: 'warp', g: 'gloss', c: 'crop' };
+    const map = { b: 'brush', e: 'eraser', l: 'line', a: 'arrow', r: 'rect', o: 'ellipse', t: 'text', s: 'select', k: 'recolor', d: 'warp', g: 'gloss', j: 'clone', u: 'blur', i: 'eyedropper', h: 'hand', c: 'crop' };
     const t = map[e.key.toLowerCase()];
     if (t) { setTool(t); if (t !== 'crop') setTab('draw', true); }
     if (e.key === 'Enter' && tool === 'crop') $('edApplyCrop').click();
+  });
+
+  document.addEventListener('keyup', e => {
+    if (e.key === ' ' && spaceDown) { spaceDown = false; view.style.cursor = cursorFor(tool); }
   });
 
   // ---------- Abrir imagen ----------
