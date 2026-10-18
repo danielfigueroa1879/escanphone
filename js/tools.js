@@ -62,6 +62,8 @@
       desc: 'Combina frente y reverso o centra un documento para imprimir.' },
     { id: 'appAmpliar', emoji: '🔍', title: 'Ampliar foto', badge: 'IA',
       desc: 'Agranda la foto 2×, 3× o 4× con IA (súper resolución).' },
+    { id: 'appEditor', emoji: '🖌️', title: 'Editor de fotos', badge: 'Nuevo',
+      desc: 'Dibuja, escribe, ajusta colores, aplica filtros, recorta y gira.' },
     { id: 'appPDF', emoji: '📚', title: 'Herramientas PDF', badge: 'Suite',
       desc: 'OCR, unir, organizar, dividir, comprimir y convertir PDF. Todo local.' },
     { id: 'appImagen', emoji: '🗜️', title: 'Convertir / Comprimir a WebP',
