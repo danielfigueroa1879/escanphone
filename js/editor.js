@@ -560,7 +560,7 @@
   };
   const rotHandleDist = () => 34 * pxScale();
   function pieceHit(p) {
-    const l = pieceLocal(p), tol = 22 * pxScale(), hw = piece.w / 2, hh = piece.h / 2;
+    const l = pieceLocal(p), tol = 22 * pxScale(), hw = piece.w / 2 * Math.max(.15, Math.abs(Math.cos(piece.spin || 0))), hh = piece.h / 2;
     if (Math.hypot(l.x, l.y + hh + rotHandleDist()) < tol) return 'rotate';
     if ([[-hw, -hh], [hw, -hh], [-hw, hh], [hw, hh]].some(([x, y]) => Math.abs(l.x - x) < tol && Math.abs(l.y - y) < tol)) return 'resize';
     if (Math.abs(l.x) < hw + tol / 2 && Math.abs(l.y) < hh + tol / 2) return 'move';
@@ -568,7 +568,8 @@
   }
   const degOf = r => ((Math.round(r * 180 / Math.PI) % 360) + 360) % 360;
   function pieceStatus() {
-    $('edStatusSize').textContent = `Pegado ${Math.round(piece.w)} × ${Math.round(piece.h)} px · ${degOf(piece.rot)}°`;
+    $('edStatusSize').textContent = `Pegado ${Math.round(piece.w)} × ${Math.round(piece.h)} px · ${degOf(piece.rot)}°` +
+      (piece.spin ? ` · 3D ${degOf(piece.spin)}°` : '');
   }
   function selDown(p) {
     if (piece) {
@@ -598,7 +599,7 @@
     } else if (selMode === 'resize' && piece) {
       // Se agranda o achica desde el centro, respetando el giro.
       const l = pieceLocal(p);
-      let w = Math.max(6, Math.abs(l.x) * 2), h = Math.max(6, Math.abs(l.y) * 2);
+      let w = Math.max(6, Math.abs(l.x) * 2 / Math.max(.15, Math.abs(Math.cos(piece.spin || 0)))), h = Math.max(6, Math.abs(l.y) * 2);
       if ($('edKeepRatio').checked) { const k = Math.max(w / piece.ow, h / piece.oh); w = piece.ow * k; h = piece.oh * k; }
       piece.w = w; piece.h = h;
     } else if (selMode === 'rotate' && piece) {
@@ -620,8 +621,50 @@
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     ctx.translate(piece.cx, piece.cy); ctx.rotate(piece.rot);
     ctx.scale(piece.flip ? -1 : 1, piece.flipV ? -1 : 1);
-    ctx.drawImage(src, -piece.w / 2, -piece.h / 2, piece.w, piece.h);
+    if (Math.abs(Math.sin(piece.spin || 0)) < 1e-3 && Math.cos(piece.spin || 0) > 0) ctx.drawImage(src, -piece.w / 2, -piece.h / 2, piece.w, piece.h);
+    else drawSpin3D(ctx, src, piece.w, piece.h, piece.spin);
     ctx.restore();
+  }
+  // Giro 3D sobre el eje vertical (en profundidad), con perspectiva. Cada
+  // columna de la imagen sigue siendo vertical al girar sobre ese eje, así que
+  // se dibuja por franjas: posición x y altura según su profundidad.
+  const spinFocal = (w, h) => Math.max(w, h) * 2.2;
+  function spinProject(u, v, w, h, a) {
+    const f = spinFocal(w, h), k = f / (f + u * Math.sin(a));
+    return { x: u * Math.cos(a) * k, y: v * k };
+  }
+  let spinTmp = null;
+  function drawSpin3D(ctx, src, w, h, a) {
+    // Se dibuja en un lienzo aparte para que la sombra solo toque la pieza
+    // (y no el fondo que se ve por sus partes transparentes).
+    const f = spinFocal(w, h), kmax = f / (f - w / 2);
+    const TW = Math.ceil(w * kmax) + 4, TH = Math.ceil(h * kmax) + 4;
+    if (!spinTmp || spinTmp.width < TW || spinTmp.height < TH) spinTmp = mk(Math.max(TW, spinTmp ? spinTmp.width : 0), Math.max(TH, spinTmp ? spinTmp.height : 0));
+    const tc = spinTmp.getContext('2d');
+    tc.setTransform(1, 0, 0, 1, 0, 0); tc.globalCompositeOperation = 'source-over';
+    tc.clearRect(0, 0, TW, TH);
+    tc.imageSmoothingEnabled = true; tc.imageSmoothingQuality = 'high';
+    tc.translate(TW / 2, TH / 2);
+    const n = Math.max(2, Math.min(src.width, 420)), sw = src.width / n, cs = Math.cos(a);
+    for (let i = 0; i < n; i++) {
+      const u0 = -w / 2 + w * i / n, u1 = -w / 2 + w * (i + 1) / n;
+      const p0 = spinProject(u0, 0, w, h, a), p1 = spinProject(u1, 0, w, h, a);
+      const k = spinProject((u0 + u1) / 2, h / 2, w, h, a).y / (h / 2);
+      const x = Math.min(p0.x, p1.x), dw = Math.abs(p1.x - p0.x) + .7, dh = h * k;
+      if (dw < .05) continue;
+      tc.drawImage(src, i * sw, 0, sw, src.height, x, -dh / 2, dw, dh);
+    }
+    // Sombra suave según el ángulo: da sensación de volumen al girar.
+    const shade = (1 - Math.abs(cs)) * .35;
+    if (shade > .01) {
+      tc.globalCompositeOperation = 'source-atop';
+      tc.fillStyle = `rgba(0,0,0,${shade})`; tc.fillRect(-TW / 2, -TH / 2, TW, TH);
+      tc.globalCompositeOperation = 'source-over';
+    }
+    ctx.drawImage(spinTmp, 0, 0, TW, TH, -TW / 2, -TH / 2, TW, TH);
+  }
+  function spinCorners(w, h, a) {
+    return [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([u, v]) => spinProject(u, v, w, h, a));
   }
   function drawSelOverlay(z) {
     const s = pxScale();
@@ -629,7 +672,8 @@
     vctx.lineWidth = 1.5 * s;
     vctx.setLineDash([6 * s, 4 * s]);
     const hw = piece ? piece.w / 2 : 0, hh = piece ? piece.h / 2 : 0, rd = piece ? rotHandleDist() : 0;
-    const corners = piece ? [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => pieceWorld(x, y)) : [];
+    const fl = piece ? [piece.flip ? -1 : 1, piece.flipV ? -1 : 1] : [1, 1];
+    const corners = piece ? spinCorners(piece.w, piece.h, piece.spin || 0).map(q => pieceWorld(q.x * fl[0], q.y * fl[1])) : [];
     const outline = () => {
       if (!piece) { selPath(vctx, z); return; }
       vctx.beginPath(); corners.forEach((q, i) => i ? vctx.lineTo(q.x, q.y) : vctx.moveTo(q.x, q.y)); vctx.closePath();
@@ -669,26 +713,120 @@
     const k = Math.min(1, base.width * .9 / w, base.height * .9 / h); w *= k; h *= k;
     const off = Math.round(Math.min(base.width, base.height) * 0.05);
     const x = clamp(clip.x + off, 0, Math.max(0, base.width - w)), y = clamp(clip.y + off, 0, Math.max(0, base.height - h));
-    piece = { img: clip.img, cx: x + w / 2, cy: y + h / 2, w, h, ow: w, oh: h, rot: 0, flip: false, flipV: false };
+    piece = { img: clip.img, cx: x + w / 2, cy: y + h / 2, w, h, ow: w, oh: h, rot: 0, spin: 0, flip: false, flipV: false };
+    syncSpinUI();
     sel = null; updateSelUI(); render();
     $('edStatusTool').textContent = 'Arrastra para mover, las esquinas para el tamaño y el círculo de arriba para girar';
     pieceStatus();
   }
   function commitPiece() {
     if (!piece) return;
+    stopSpin();
     const nb = mk(base.width, base.height), c = nb.getContext('2d');
     c.drawImage(base, 0, 0);
     drawPiece(c, piece.img);
     piece = null; updateSelUI();
     setBase(nb); pushHistory(); render();
   }
-  function discardPiece() { piece = null; updateSelUI(); render(); }
+  function discardPiece() { stopSpin(); piece = null; updateSelUI(); render(); }
+
+  // ---------- Giro 3D: control, animación y video ----------
+  let spinAnim = null, spinDir = -1, recording = false;
+  const TURN_SECONDS = 3;   // una vuelta completa cada 3 s
+  const wrapAngle = a => Math.atan2(Math.sin(a), Math.cos(a));
+  function syncSpinUI() {
+    if (!piece) return;
+    const d = Math.round(wrapAngle(piece.spin) * 180 / Math.PI);
+    $('edSpin').value = d; $('edSpinOut').textContent = d + '°';
+    $('edSpinL').textContent = spinAnim && spinAnim.dir < 0 ? '■ Detener' : '⟲ Animar izquierda';
+    $('edSpinR').textContent = spinAnim && spinAnim.dir > 0 ? '■ Detener' : 'Animar derecha ⟳';
+  }
+  function startSpin(dir) {
+    if (!piece) return;
+    if (spinAnim && spinAnim.dir === dir) { stopSpin(); return; }
+    stopSpin(); spinDir = dir;
+    spinAnim = { dir, last: performance.now(), raf: 0 };
+    const tick = t => {
+      if (!spinAnim) return;
+      if (!piece) { stopSpin(); return; }
+      const dt = Math.min(.1, (t - spinAnim.last) / 1000); spinAnim.last = t;
+      piece.spin = wrapAngle(piece.spin + spinAnim.dir * dt * Math.PI * 2 / TURN_SECONDS);
+      syncSpinUI(); pieceStatus(); render();
+      spinAnim.raf = requestAnimationFrame(tick);
+    };
+    spinAnim.raf = requestAnimationFrame(tick);
+    syncSpinUI();
+  }
+  function stopSpin() {
+    if (!spinAnim) return;
+    cancelAnimationFrame(spinAnim.raf); spinAnim = null; syncSpinUI();
+  }
+  $('edSpin').addEventListener('input', e => {
+    if (!piece) return;
+    stopSpin(); piece.spin = +e.target.value * Math.PI / 180;
+    $('edSpinOut').textContent = e.target.value + '°'; pieceStatus(); render();
+  });
+  $('edSpin').addEventListener('dblclick', () => { if (piece) { piece.spin = 0; syncSpinUI(); pieceStatus(); render(); } });
+  $('edSpinL').addEventListener('click', () => startSpin(-1));
+  $('edSpinR').addEventListener('click', () => startSpin(1));
+
+  // Graba 2 vueltas completas de la foto con la pieza girando, en el
+  // sentido de la última animación (izquierda por defecto).
+  $('edSpinVideo').addEventListener('click', async () => {
+    if (!piece || recording) return;
+    const btn = $('edSpinVideo');
+    if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) { toast('Este navegador no puede grabar video.'); return; }
+    // MP4 con H.264 primero (se reproduce en iPhone y WhatsApp); si no, WebM.
+    const types = ['video/mp4;codecs=avc1.42E01E', 'video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm', 'video/mp4'];
+    const mime = types.find(t => MediaRecorder.isTypeSupported(t)) || '';
+    stopSpin(); recording = true; btn.disabled = true;
+    try {
+      const k = Math.min(1, 1280 / Math.max(base.width, base.height));
+      const W = Math.round(base.width * k / 2) * 2, H = Math.round(base.height * k / 2) * 2;
+      const out = mk(W, H), oc = out.getContext('2d');
+      const rec = new MediaRecorder(out.captureStream(30), mime ? { mimeType: mime, videoBitsPerSecond: 8e6 } : undefined);
+      const chunks = [];
+      rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+      const stopped = new Promise(r => { rec.onstop = r; });
+      const s0 = piece.spin, turns = 2, dur = TURN_SECONDS * turns * 1000;
+      const frame = a => {
+        oc.setTransform(1, 0, 0, 1, 0, 0); oc.fillStyle = '#fff'; oc.fillRect(0, 0, W, H);
+        oc.setTransform(W / base.width, 0, 0, H / base.height, 0, 0);
+        oc.drawImage(adjCanvas, 0, 0); oc.drawImage(drawLayer, 0, 0);
+        const keep = piece.spin; piece.spin = a; drawPiece(oc, piece.img); piece.spin = keep;
+      };
+      frame(s0);
+      rec.start(200);
+      const t0 = performance.now();
+      await new Promise(res => {
+        const step = t => {
+          const f = Math.min(1, (t - t0) / dur);
+          frame(s0 + spinDir * Math.PI * 2 * turns * f);
+          btn.textContent = `Grabando… ${Math.round(f * 100)} %`;
+          if (f < 1 && piece) requestAnimationFrame(step); else res();
+        };
+        requestAnimationFrame(step);
+      });
+      rec.stop(); await stopped;
+      const type = rec.mimeType || mime || 'video/webm';
+      const blob = new Blob(chunks, { type }), ext = /mp4/.test(type) ? 'mp4' : 'webm';
+      const url = URL.createObjectURL(blob), a = document.createElement('a');
+      a.href = url; a.download = baseName(fileName) + '-giro-3d.' + ext;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      toast(`Video guardado (${ext.toUpperCase()}, ${(blob.size / 1048576).toFixed(1)} MB).`);
+    } catch (err) {
+      console.error(err); toast('No se pudo grabar el video: ' + (err.message || err));
+    } finally {
+      recording = false; btn.disabled = false; btn.textContent = '🎬 Guardar video del giro';
+    }
+  });
   function updateSelUI() {
     $('edCopy').disabled = !sel;
     $('edPaste').disabled = !clip;
     $('edPieceRow').hidden = !piece;
     $('edSelHint').textContent = piece
-      ? 'Mueve lo pegado, arrastra sus esquinas para cambiar el tamaño y el círculo de arriba para girarlo sobre su centro. Luego pulsa «Fijar aquí».'
+      ? 'Mueve lo pegado, arrastra sus esquinas para cambiar el tamaño y el círculo de arriba para girarlo. Con «Giro 3D» gira en profundidad sobre su centro. Luego pulsa «Fijar aquí».'
       : sel ? 'Zona marcada. Pulsa «Copiar zona» y luego «Pegar» o toca su recorte guardado.'
       : selShape === 'lasso' ? 'Dibuja con el dedo o el mouse el contorno de lo que quieres copiar.'
       : 'Arrastra sobre la foto para marcar la zona que quieres copiar.';
