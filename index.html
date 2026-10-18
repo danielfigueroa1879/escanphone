@@ -946,7 +946,13 @@
 
         <div class="ed-pane" data-pane="draw">
           <div class="ed-group" id="edSelGroup" hidden>
-            <span class="ed-label">Copiar y pegar</span>
+            <span class="ed-label">Forma de la zona</span>
+            <div class="ed-modes" id="edSelShapes">
+              <button type="button" data-shape="rect" aria-pressed="true">Rectángulo</button>
+              <button type="button" data-shape="ellipse" aria-pressed="false">Círculo</button>
+              <button type="button" data-shape="lasso" aria-pressed="false">Libre</button>
+            </div>
+            <span class="ed-label" style="margin-top:6px">Copiar y pegar</span>
             <p class="ed-hint" id="edSelHint">Arrastra sobre la foto para marcar la zona que quieres copiar.</p>
             <div class="ed-row">
               <button class="ed-btn" id="edCopy" type="button" disabled>Copiar zona</button>
@@ -958,7 +964,10 @@
               <button class="ed-btn" id="edPieceCancel" type="button">Descartar</button>
               <button class="ed-btn ed-primary" id="edPieceApply" type="button">Fijar aquí</button>
             </div>
-            <p class="ed-hint">Lo copiado se mantiene aunque abras otra foto, así puedes pegarlo en ella.</p>
+            <span class="ed-label" style="margin-top:6px">Recortes guardados <output id="edClipCount"></output></span>
+            <div class="ed-clips" id="edClips"></div>
+            <input type="file" id="edClipInput" accept="image/*" multiple style="display:none;">
+            <p class="ed-hint">Cada zona que copias se guarda aquí, también después de cerrar la app. Toca un recorte para pegarlo en la foto que tengas abierta; con «＋» agregas una imagen tuya.</p>
           </div>
           <div class="ed-group" id="edFxGroup" hidden>
             <div id="edWarpModes">
