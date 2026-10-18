@@ -33,6 +33,7 @@
   let history = [], hIndex = -1, restoreToken = 0, restoring = false;
   let showOriginal = false, loaded = false, fileName = 'foto';
   let crop = null, ratio = 'free';
+  let sel = null, clip = null, piece = null, bgBusy = false;   // copiar y pegar
 
   const FILTERS = [
     ['none', 'Ninguno'], ['bw', 'B y N'], ['sepia', 'Sepia'], ['warm', 'Cálido'],
@@ -53,6 +54,8 @@
     rect: 'Rectángulo · arrastra en diagonal',
     ellipse: 'Círculo · arrastra en diagonal',
     text: 'Texto · toca la foto para poner el texto',
+    select: 'Seleccionar · marca una zona, cópiala y pégala donde quieras',
+    recolor: 'Cambiar color · toca la prenda u objeto que quieres pintar',
     crop: 'Recorte · ajusta el marco y pulsa Aplicar'
   };
 
@@ -139,6 +142,8 @@
     vctx.drawImage(drawLayer, 0, 0);
     if (drawing && tool !== 'eraser') { vctx.globalAlpha = opacity(); vctx.drawImage(strokeLayer, 0, 0); vctx.globalAlpha = 1; }
     if (tool === 'crop' && crop) drawCropOverlay();
+    if (piece) drawPiece(vctx, piece.view, piece.draw);
+    if (piece || sel) drawSelOverlay(piece || sel);
   }
 
   function fit() {
@@ -176,6 +181,7 @@
     if (!e) return;
     hIndex = i; updateHistoryButtons();
     if (tool === 'crop') crop = null;
+    piece = null; sel = null; updateSelUI();
     Object.assign(adj, e.adj); filter = e.filter; intensity = e.intensity;
     syncAdjustControls();
     if (e.base !== base) setBase(e.base); else processNow();
@@ -276,6 +282,8 @@
     e.preventDefault();
     const p = toImg(e);
     if (tool === 'crop') { cropDown(p); pointerId = e.pointerId; view.setPointerCapture(e.pointerId); return; }
+    if (tool === 'select') { selDown(p); pointerId = e.pointerId; view.setPointerCapture(e.pointerId); requestRender(); return; }
+    if (tool === 'recolor') { recolorAt(p); return; }
     if (tool === 'text') {
       if (drawText(drawLayer.getContext('2d'), p)) { pushHistory(); render(); }
       else $('edTextValue').focus();
@@ -293,6 +301,7 @@
     if (e.pointerId !== pointerId) return;
     const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     if (tool === 'crop') { cropMove(toImg(e)); requestRender(); return; }
+    if (tool === 'select') { selMove(toImg(e)); requestRender(); return; }
     if (!drawing) return;
     const c = strokeLayer.getContext('2d');
     if (tool === 'brush') {
@@ -310,6 +319,7 @@
     if (e.pointerId !== pointerId) return;
     pointerId = null;
     if (tool === 'crop') { cropMode = null; return; }
+    if (tool === 'select') { selUp(); return; }
     if (!drawing) return;
     drawing = false;
     const moved = Math.hypot(last.x - start.x, last.y - start.y) > 2;
@@ -415,15 +425,233 @@
     c.drawImage(src, 0, 0); return n;
   }
 
+  // ---------- Seleccionar, copiar y pegar ----------
+  // La zona copiada guarda la foto, la foto con ajustes (para verla igual
+  // mientras flota) y los trazos. Al fijarla se pega en la foto y en los trazos.
+  let selMode = null, selAnchor = null, selOffset = null;
+  const roundR = r => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.max(1, Math.round(r.w)), h: Math.max(1, Math.round(r.h)) });
+  function hitBox(p, r) {
+    const tol = 22 * pxScale(), corners = cropCorners(r);
+    const hit = corners.findIndex(([x, y]) => Math.abs(p.x - x) < tol && Math.abs(p.y - y) < tol);
+    if (hit >= 0) return { corner: hit, anchor: { x: corners[3 - hit][0], y: corners[3 - hit][1] } };
+    const m = tol / 2;   // margen: tocar justo el borde también lo agarra
+    if (p.x > r.x - m && p.x < r.x + r.w + m && p.y > r.y - m && p.y < r.y + r.h + m) return { inside: true };
+    return null;
+  }
+  function selDown(p) {
+    if (piece) {
+      const h = hitBox(p, piece);
+      if (h && h.anchor) { selMode = 'resize'; selAnchor = h.anchor; return; }
+      if (h) { selMode = 'move'; selOffset = { x: p.x - piece.x, y: p.y - piece.y }; return; }
+      commitPiece();
+    }
+    selMode = 'new'; selAnchor = { x: clamp(p.x, 0, base.width), y: clamp(p.y, 0, base.height) };
+    sel = { x: selAnchor.x, y: selAnchor.y, w: 0, h: 0 };
+    updateSelUI();
+  }
+  function selMove(p) {
+    if (selMode === 'new') {
+      const px = clamp(p.x, 0, base.width), py = clamp(p.y, 0, base.height);
+      sel = { x: Math.min(px, selAnchor.x), y: Math.min(py, selAnchor.y), w: Math.abs(px - selAnchor.x), h: Math.abs(py - selAnchor.y) };
+    } else if (selMode === 'move' && piece) {
+      piece.x = p.x - selOffset.x; piece.y = p.y - selOffset.y;
+    } else if (selMode === 'resize' && piece) {
+      let w = Math.abs(p.x - selAnchor.x), h = Math.abs(p.y - selAnchor.y);
+      if ($('edKeepRatio').checked) { const r = piece.ow / piece.oh; if (w / Math.max(h, 1) > r) h = w / r; else w = h * r; }
+      w = Math.max(w, 6); h = Math.max(h, 6);
+      piece.x = p.x < selAnchor.x ? selAnchor.x - w : selAnchor.x;
+      piece.y = p.y < selAnchor.y ? selAnchor.y - h : selAnchor.y;
+      piece.w = w; piece.h = h;
+    }
+    if (piece) $('edStatusSize').textContent = `Pegado ${Math.round(piece.w)} × ${Math.round(piece.h)} px`;
+    else if (sel) $('edStatusSize').textContent = `Zona ${Math.round(sel.w)} × ${Math.round(sel.h)} px`;
+  }
+  function selUp() {
+    if (selMode === 'new' && sel && (sel.w < 4 || sel.h < 4)) sel = null;
+    selMode = null; updateSelUI(); render();
+  }
+  function drawPiece(ctx, src, draw) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    if (piece.flip) { ctx.translate(piece.x + piece.w, piece.y); ctx.scale(-1, 1); }
+    else ctx.translate(piece.x, piece.y);
+    ctx.drawImage(src, 0, 0, piece.w, piece.h);
+    if (draw) ctx.drawImage(draw, 0, 0, piece.w, piece.h);
+    ctx.restore();
+  }
+  function drawSelOverlay(r) {
+    const s = pxScale();
+    vctx.save();
+    vctx.lineWidth = 1.5 * s;
+    vctx.setLineDash([6 * s, 4 * s]);
+    vctx.strokeStyle = '#000'; vctx.strokeRect(r.x, r.y, r.w, r.h);
+    vctx.lineDashOffset = 6 * s; vctx.strokeStyle = '#fff'; vctx.strokeRect(r.x, r.y, r.w, r.h);
+    if (piece) {
+      vctx.setLineDash([]); vctx.fillStyle = '#fff'; vctx.strokeStyle = '#000'; vctx.lineWidth = 1 * s;
+      const hs = 14 * s;
+      cropCorners(r).forEach(([x, y]) => { vctx.fillRect(x - hs / 2, y - hs / 2, hs, hs); vctx.strokeRect(x - hs / 2, y - hs / 2, hs, hs); });
+    }
+    vctx.restore();
+  }
+  function copySel() {
+    if (!sel) { toast('Primero marca la zona que quieres copiar.'); return; }
+    commitPiece();
+    const r = roundR(sel);
+    clip = { base: cropCanvas(base, r), view: cropCanvas(adjCanvas, r), draw: cropCanvas(drawLayer, r), x: r.x, y: r.y };
+    toast('Zona copiada. Pulsa Pegar.');
+    updateSelUI();
+  }
+  function pasteClip() {
+    if (!clip || !loaded) return;
+    if (tool !== 'select') { setTool('select'); setTab('draw', true); }
+    commitPiece();
+    const w = clip.base.width, h = clip.base.height;
+    const off = Math.round(Math.min(base.width, base.height) * 0.05);
+    const x = clamp(clip.x + off, 0, Math.max(0, base.width - w)), y = clamp(clip.y + off, 0, Math.max(0, base.height - h));
+    piece = { base: clip.base, view: clip.view, draw: clip.draw, x, y, w, h, ow: w, oh: h, flip: false };
+    sel = null; updateSelUI(); render();
+    $('edStatusTool').textContent = 'Arrastra lo pegado para moverlo y sus esquinas para cambiar el tamaño';
+  }
+  function commitPiece() {
+    if (!piece) return;
+    const nb = mk(base.width, base.height), c = nb.getContext('2d');
+    c.drawImage(base, 0, 0);
+    drawPiece(c, piece.base, null);
+    drawPiece(drawLayer.getContext('2d'), piece.draw, null);
+    piece = null; updateSelUI();
+    setBase(nb); pushHistory(); render();
+  }
+  function discardPiece() { piece = null; updateSelUI(); render(); }
+  function updateSelUI() {
+    $('edCopy').disabled = !sel;
+    $('edPaste').disabled = !clip;
+    $('edPieceRow').hidden = !piece;
+    $('edSelHint').textContent = piece
+      ? 'Mueve lo pegado y arrastra sus esquinas para agrandarlo o achicarlo. Luego pulsa «Fijar aquí».'
+      : sel ? 'Zona marcada. Pulsa «Copiar zona» y luego «Pegar».'
+      : 'Arrastra sobre la foto para marcar la zona que quieres copiar.';
+  }
+  $('edCopy').addEventListener('click', copySel);
+  $('edPaste').addEventListener('click', pasteClip);
+  $('edPieceApply').addEventListener('click', commitPiece);
+  $('edPieceCancel').addEventListener('click', discardPiece);
+  $('edPieceFlip').addEventListener('click', () => { if (piece) { piece.flip = !piece.flip; render(); } });
+
+  // ---------- Cambiar color (ropa u objetos) ----------
+  // Varita mágica desde el punto tocado (compara tono más que luz, para
+  // abarcar sombras y arrugas) y recoloreo que conserva el sombreado.
+  function rgb2hsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2;
+    if (mx === mn) return [0, 0, l];
+    const d = mx - mn, s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+    const h = mx === r ? ((g - b) / d + (g < b ? 6 : 0)) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return [h / 6, s, l];
+  }
+  function hue2rgb(p, q, t) {
+    if (t < 0) t += 1; if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+  function hsl2rgb(h, s, l) {
+    if (!s) return [l * 255, l * 255, l * 255];
+    const q = l < .5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+    return [hue2rgb(p, q, h + 1 / 3) * 255, hue2rgb(p, q, h) * 255, hue2rgb(p, q, h - 1 / 3) * 255];
+  }
+  function recolorAt(pt) {
+    const W = base.width, H = base.height, x0 = Math.floor(pt.x), y0 = Math.floor(pt.y);
+    if (x0 < 0 || y0 < 0 || x0 >= W || y0 >= H) return;
+    const d = baseData.data;
+    if (d[(y0 * W + x0) * 4 + 3] < 10) { toast('Ahí no hay nada que pintar.'); return; }
+    // Color de referencia: promedio de 5×5 alrededor del toque.
+    let sr = 0, sg = 0, sb = 0, n = 0;
+    for (let y = Math.max(0, y0 - 2); y <= Math.min(H - 1, y0 + 2); y++)
+      for (let x = Math.max(0, x0 - 2); x <= Math.min(W - 1, x0 + 2); x++) { const i = (y * W + x) * 4; sr += d[i]; sg += d[i + 1]; sb += d[i + 2]; n++; }
+    sr /= n; sg /= n; sb /= n;
+    const sY = .299 * sr + .587 * sg + .114 * sb, sCb = sb - sY, sCr = sr - sY;
+    const T = +$('edTol').value * 1.3;
+    const weight = new Float32Array(W * H);
+    const seen = new Uint8Array(W * H);
+    const stack = new Int32Array(W * H);
+    let top = 0, count = 0, sumL = 0;
+    stack[top++] = y0 * W + x0; seen[y0 * W + x0] = 1;
+    while (top) {
+      const k = stack[--top], i = k * 4;
+      if (d[i + 3] < 10) continue;
+      const r = d[i], g = d[i + 1], b = d[i + 2], Y = .299 * r + .587 * g + .114 * b;
+      const dc = Math.hypot((b - Y) - sCb, (r - Y) - sCr, (Y - sY) * .35);
+      if (dc > T) continue;
+      weight[k] = dc <= T * .7 ? 1 : (T - dc) / (T * .3);
+      count++; sumL += (Math.max(r, g, b) + Math.min(r, g, b)) / 510;
+      const x = k % W, y = (k - x) / W;
+      if (x > 0 && !seen[k - 1]) { seen[k - 1] = 1; stack[top++] = k - 1; }
+      if (x < W - 1 && !seen[k + 1]) { seen[k + 1] = 1; stack[top++] = k + 1; }
+      if (y > 0 && !seen[k - W]) { seen[k - W] = 1; stack[top++] = k - W; }
+      if (y < H - 1 && !seen[k + W]) { seen[k + W] = 1; stack[top++] = k + W; }
+    }
+    if (count < 4) return;
+    const n2 = parseInt(color.slice(1), 16);
+    const [th, ts, tl0] = rgb2hsl(n2 >> 16, (n2 >> 8) & 255, n2 & 255);
+    const tl = clamp(tl0, .08, .92), mL = clamp(sumL / count, .02, .98);
+    const nb = mk(W, H), nctx = nb.getContext('2d');
+    const out = new ImageData(new Uint8ClampedArray(d), W, H), o = out.data;
+    for (let k = 0; k < W * H; k++) {
+      const w = weight[k];
+      if (!w) continue;
+      const i = k * 4, [, , l] = rgb2hsl(d[i], d[i + 1], d[i + 2]);
+      const nl = tl >= mL ? 1 - (1 - l) * (1 - tl) / (1 - mL) : l * tl / mL;
+      const [r, g, b] = hsl2rgb(th, ts, clamp(nl, 0, 1));
+      o[i] = d[i] + (r - d[i]) * w; o[i + 1] = d[i + 1] + (g - d[i + 1]) * w; o[i + 2] = d[i + 2] + (b - d[i + 2]) * w;
+    }
+    nctx.putImageData(out, 0, 0);
+    setBase(nb); pushHistory(); render();
+  }
+  $('edTol').addEventListener('input', e => $('edTolOut').textContent = e.target.value);
+
+  // ---------- Quitar fondo (reutiliza la IA de la herramienta «Quitar fondo») ----------
+  $('edRemoveBg').addEventListener('click', async () => {
+    if (!loaded || bgBusy) return;
+    if (typeof window.quitarFondoBlob !== 'function') { toast('El removedor de fondo no está disponible.'); return; }
+    commitPiece();
+    const src = base, status = $('edBgStatus'), btn = $('edRemoveBg');
+    bgBusy = true; btn.disabled = true; status.textContent = 'Cargando modelo de IA…';
+    try {
+      const blob = await new Promise(res => src.toBlob(res, 'image/png'));
+      const out = await window.quitarFondoBlob(blob, (key, cur, tot) => {
+        const pct = tot ? Math.round(cur / tot * 100) : null;
+        status.textContent = (/fetch/i.test(key || '') ? 'Descargando modelo… ' : 'Quitando el fondo… ') + (pct != null ? pct + ' %' : '');
+      });
+      if (base !== src) { status.textContent = 'La foto cambió mientras se procesaba. Vuelve a intentarlo.'; return; }
+      const bmp = await createImageBitmap(out);
+      const nb = mk(src.width, src.height);
+      nb.getContext('2d').drawImage(bmp, 0, 0, src.width, src.height);
+      setBase(nb); pushHistory(); render();
+      $('edExportFormat').value = 'png';
+      status.textContent = '¡Listo! Guárdala en PNG para mantener el fondo transparente.';
+    } catch (err) {
+      console.error(err);
+      status.textContent = 'Error: ' + (err.message || err);
+    } finally {
+      bgBusy = false; btn.disabled = false;
+    }
+  });
+
   // ---------- UI: herramientas, pestañas ----------
   function setTool(t) {
+    if (tool === 'select' && t !== 'select') { commitPiece(); sel = null; }
     tool = t;
     $$('.ed-tool', root).forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
     $('edStatusTool').textContent = TOOL_HINTS[t];
-    view.style.cursor = t === 'text' ? 'text' : t === 'crop' ? 'crosshair' : (t === 'brush' || t === 'eraser') ? 'none' : 'crosshair';
+    view.style.cursor = t === 'text' ? 'text' : t === 'recolor' ? 'copy' : t === 'crop' ? 'crosshair' : (t === 'brush' || t === 'eraser') ? 'none' : 'crosshair';
     if (t === 'crop') { crop = fullCrop(); setTab('frame', true); }
     else { crop = null; $('edStatusSize').textContent = `${base.width} × ${base.height} px`; if (currentTab === 'frame') setTab('draw', true); }
     $('edTextGroup').hidden = t !== 'text';
+    $('edSelGroup').hidden = t !== 'select';
+    $('edRecolorGroup').hidden = t !== 'recolor';
+    $('edColorGroup').hidden = t === 'select' || t === 'eraser';
+    $('edSizeGroup').hidden = $('edOpacityGroup').hidden = $('edClear').hidden = t === 'select' || t === 'recolor';
     $('edFillWrap').hidden = !(t === 'rect' || t === 'ellipse');
     render();
   }
@@ -538,12 +766,21 @@
     if (!activo() || !loaded) return;
     const typing = /^(TEXTAREA|INPUT|SELECT)$/.test(document.activeElement?.tagName) && document.activeElement.type !== 'range';
     const mod = e.ctrlKey || e.metaKey;
-    if (e.key === 'Escape') { if (!$('edExportModal').hidden) closeExport(); else if (tool === 'crop') setTool('brush'); return; }
+    if (e.key === 'Escape') {
+      if (!$('edExportModal').hidden) closeExport();
+      else if (piece) discardPiece();
+      else if (sel) { sel = null; updateSelUI(); render(); }
+      else if (tool === 'crop') setTool('brush');
+      return;
+    }
     if (!$('edExportModal').hidden) return;
     if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
     if (mod && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); return; }
+    if (mod && e.key.toLowerCase() === 'c' && !typing && tool === 'select' && sel) { e.preventDefault(); copySel(); return; }
+    if (mod && e.key.toLowerCase() === 'v' && !typing && clip) { e.preventDefault(); pasteClip(); return; }
+    if (e.key === 'Enter' && piece) { commitPiece(); return; }
     if (typing || mod || e.altKey) return;
-    const map = { b: 'brush', e: 'eraser', l: 'line', a: 'arrow', r: 'rect', o: 'ellipse', t: 'text', c: 'crop' };
+    const map = { b: 'brush', e: 'eraser', l: 'line', a: 'arrow', r: 'rect', o: 'ellipse', t: 'text', s: 'select', k: 'recolor', c: 'crop' };
     const t = map[e.key.toLowerCase()];
     if (t) { setTool(t); if (t !== 'crop') setTab('draw', true); }
     if (e.key === 'Enter' && tool === 'crop') $('edApplyCrop').click();
@@ -566,6 +803,7 @@
     img.src = url;
   }
   function loadCanvas(c, name) {
+    piece = null; sel = null; updateSelUI();
     Object.keys(adj).forEach(k => adj[k] = 0); filter = 'none'; intensity = 100;
     syncAdjustControls();
     drawLayer = mk(c.width, c.height);
@@ -618,6 +856,7 @@
   $('edExport').addEventListener('click', () => {
     if (!loaded) return;
     if (tool === 'crop') setTool('brush');
+    commitPiece();
     exportImage(); $('edExportModal').hidden = false; $('edCloseExport').focus();
   });
   $('edExportFormat').addEventListener('change', exportImage);

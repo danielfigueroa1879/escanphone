@@ -890,6 +890,12 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg>
         </button>
         <hr>
+        <button class="ed-tool" type="button" data-tool="select" aria-pressed="false" title="Seleccionar, copiar y pegar (S)" aria-label="Seleccionar y copiar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="3 3"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="recolor" aria-pressed="false" title="Cambiar color de ropa u objeto (K)" aria-label="Cambiar color">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 6l2 4 2-1v12h8V9l2 1 2-4-4-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3Z"/></svg>
+        </button>
         <button class="ed-tool" type="button" data-tool="crop" aria-pressed="false" title="Recortar (C)" aria-label="Recortar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
         </button>
@@ -915,15 +921,35 @@
         </div>
 
         <div class="ed-pane" data-pane="draw">
-          <div class="ed-group">
+          <div class="ed-group" id="edSelGroup" hidden>
+            <span class="ed-label">Copiar y pegar</span>
+            <p class="ed-hint" id="edSelHint">Arrastra sobre la foto para marcar la zona que quieres copiar.</p>
+            <div class="ed-row">
+              <button class="ed-btn" id="edCopy" type="button" disabled>Copiar zona</button>
+              <button class="ed-btn" id="edPaste" type="button" disabled>Pegar</button>
+            </div>
+            <label class="ed-check"><input type="checkbox" id="edKeepRatio" checked> Mantener proporción al cambiar tamaño</label>
+            <div class="ed-row" id="edPieceRow" hidden>
+              <button class="ed-btn" id="edPieceFlip" type="button">Voltear ↔</button>
+              <button class="ed-btn" id="edPieceCancel" type="button">Descartar</button>
+              <button class="ed-btn ed-primary" id="edPieceApply" type="button">Fijar aquí</button>
+            </div>
+            <p class="ed-hint">Lo copiado se mantiene aunque abras otra foto, así puedes pegarlo en ella.</p>
+          </div>
+          <div class="ed-group" id="edColorGroup">
             <span class="ed-label">Color</span>
             <div class="ed-swatches" id="edSwatches"></div>
           </div>
-          <div class="ed-group">
+          <div class="ed-group" id="edRecolorGroup" hidden>
+            <label class="ed-label" for="edTol">Tolerancia <output id="edTolOut">35</output></label>
+            <input type="range" id="edTol" min="5" max="100" value="35">
+            <p class="ed-hint">Elige el color nuevo arriba y toca la prenda u objeto. Se conservan las sombras y arrugas. Si no se pinta entero, sube la tolerancia o toca las partes que falten.</p>
+          </div>
+          <div class="ed-group" id="edSizeGroup">
             <label class="ed-label" for="edSize">Grosor <output id="edSizeOut">8 px</output></label>
             <input type="range" id="edSize" min="1" max="80" value="8">
           </div>
-          <div class="ed-group">
+          <div class="ed-group" id="edOpacityGroup">
             <label class="ed-label" for="edOpacity">Opacidad <output id="edOpacityOut">100 %</output></label>
             <input type="range" id="edOpacity" min="5" max="100" value="100">
           </div>
@@ -948,6 +974,11 @@
         </div>
 
         <div class="ed-pane" data-pane="adjust" hidden>
+          <div class="ed-group">
+            <span class="ed-label">Fondo</span>
+            <button class="ed-btn ed-primary" id="edRemoveBg" type="button">🪄 Quitar fondo (IA)</button>
+            <p class="ed-hint" id="edBgStatus">Deja la foto con fondo transparente. La primera vez descarga el modelo (~90 MB).</p>
+          </div>
           <div class="ed-group"><label class="ed-label" for="edAdjBrightness">Brillo <output>0</output></label><input type="range" id="edAdjBrightness" data-adj="brightness" min="-100" max="100" value="0"></div>
           <div class="ed-group"><label class="ed-label" for="edAdjContrast">Contraste <output>0</output></label><input type="range" id="edAdjContrast" data-adj="contrast" min="-100" max="100" value="0"></div>
           <div class="ed-group"><label class="ed-label" for="edAdjSaturation">Saturación <output>0</output></label><input type="range" id="edAdjSaturation" data-adj="saturation" min="-100" max="100" value="0"></div>
