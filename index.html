@@ -959,10 +959,16 @@
               <button class="ed-btn" id="edPaste" type="button" disabled>Pegar</button>
             </div>
             <label class="ed-check"><input type="checkbox" id="edKeepRatio" checked> Mantener proporción al cambiar tamaño</label>
-            <div class="ed-row" id="edPieceRow" hidden>
-              <button class="ed-btn" id="edPieceFlip" type="button">Voltear ↔</button>
-              <button class="ed-btn" id="edPieceCancel" type="button">Descartar</button>
-              <button class="ed-btn ed-primary" id="edPieceApply" type="button">Fijar aquí</button>
+            <div id="edPieceRow" class="ed-group" hidden>
+              <div class="ed-row">
+                <button class="ed-btn" id="edPieceRot" type="button" title="Girar 90° sobre su centro">↻ 90°</button>
+                <button class="ed-btn" id="edPieceFlip" type="button">Voltear ↔</button>
+                <button class="ed-btn" id="edPieceFlipV" type="button">Voltear ↕</button>
+              </div>
+              <div class="ed-row">
+                <button class="ed-btn" id="edPieceCancel" type="button">Descartar</button>
+                <button class="ed-btn ed-primary" id="edPieceApply" type="button">Fijar aquí</button>
+              </div>
             </div>
             <span class="ed-label" style="margin-top:6px">Recortes guardados <output id="edClipCount"></output></span>
             <div class="ed-clips" id="edClips"></div>
