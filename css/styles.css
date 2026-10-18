@@ -1982,7 +1982,15 @@ body.dark .amp-aviso { background: rgba(255, 65, 71, 0.12); border-color: rgba(2
   }
 
   .ed-panel { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; }
-  .ed-tabs { display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
+  .ed-tabs { display: grid; grid-template-columns: repeat(5, 1fr); border-bottom: 1px solid var(--line); }
+  .ed-ai-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .ed-ai-presets button {
+    min-height: 40px; padding: 6px 8px; border: 1.5px solid var(--line); background: var(--surface-2); color: var(--ink);
+    border-radius: 9px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; text-align: left; line-height: 1.25;
+  }
+  .ed-ai-presets button[aria-pressed="true"] { border-color: var(--brand); box-shadow: 0 0 0 1.5px var(--brand); }
+  .ed-ai-token summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+  .ed-ai-token input { width: 100%; margin-top: 8px; border: 1.5px solid var(--line); background: var(--surface-2); color: var(--ink); border-radius: 8px; padding: 8px 10px; font: inherit; }
   .ed-tab {
     background: none; border: 0; border-bottom: 2.5px solid transparent; padding: 12px 4px 10px;
     font: inherit; font-weight: 700; font-size: 13px; color: var(--ink-mute); cursor: pointer;

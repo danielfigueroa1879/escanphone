@@ -942,6 +942,7 @@
           <button class="ed-tab" type="button" role="tab" data-tab="adjust" aria-selected="false">Ajustes</button>
           <button class="ed-tab" type="button" role="tab" data-tab="filters" aria-selected="false">Filtros</button>
           <button class="ed-tab" type="button" role="tab" data-tab="frame" aria-selected="false">Encuadre</button>
+          <button class="ed-tab" type="button" role="tab" data-tab="ai" aria-selected="false">✨ IA</button>
         </div>
 
         <div class="ed-pane" data-pane="draw">
@@ -1058,6 +1059,31 @@
           </div>
         </div>
 
+        <div class="ed-pane" data-pane="ai" hidden>
+          <div class="ed-group">
+            <span class="ed-label">Retoque con IA gratuita</span>
+            <p class="ed-hint">Elige un cambio y pulsa «Aplicar». La IA lo dibuja realista sobre tu foto, respetando la pose. Tarda entre 20 s y 1 min.</p>
+            <div class="ed-ai-presets" id="edAiPresets">
+              <button type="button" data-ai="stiletto">👠 Stiletto suela roja</button>
+              <button type="button" data-ai="unas">💅 Uñas blanco metálico</button>
+              <button type="button" data-ai="brillo">✨ Piel con brillo extremo</button>
+              <button type="button" data-ai="gemelos">🦵 Sóleo y gemelo en gota</button>
+              <button type="button" data-ai="venas">🦶 Venas naturales en pies</button>
+              <button type="button" data-ai="fitness">🏋️‍♀️ Físico fitness, cintura marcada</button>
+            </div>
+            <label class="ed-label" for="edAiPrompt">Instrucción para la IA (en inglés funciona mejor)</label>
+            <textarea id="edAiPrompt" rows="5" placeholder="Elige un botón de arriba o escribe lo que quieres cambiar…"></textarea>
+            <button class="ed-btn ed-primary" id="edAiRun" type="button">✨ Aplicar con IA</button>
+            <p class="ed-hint" id="edAiStatus"></p>
+          </div>
+          <details class="ed-ai-token">
+            <summary>Más usos gratis al día (opcional)</summary>
+            <p class="ed-hint">Sin cuenta, Hugging Face da unos pocos retoques gratis al día. Con una cuenta gratuita rinde más: crea una en huggingface.co, ve a Settings → Access Tokens, crea un token de tipo «Read» y pégalo aquí. Se guarda solo en este dispositivo.</p>
+            <input type="password" id="edAiToken" placeholder="hf_…" autocomplete="off">
+          </details>
+          <p class="ed-hint">La foto se envía a Hugging Face (modelo FLUX.1 Kontext de Black Forest Labs) para procesarla. Si la IA está ocupada o se acabó la cuota del día, inténtalo más tarde.</p>
+        </div>
+
         <div class="ed-pane" data-pane="frame" hidden>
           <div class="ed-group">
             <span class="ed-label">Proporción del recorte</span>
@@ -1152,6 +1178,10 @@
         <div class="ed-modes pj-3" data-pjopt="fondo"><button type="button" data-v="gym">Gimnasio</button><button type="button" data-v="estudio">Estudio</button><button type="button" data-v="transparente">Transparente</button></div>
       </div>
 
+      <div class="ed-group">
+        <button class="ed-btn ed-primary" id="pjMyPhoto" type="button">📷 Aplicar a mi foto con IA (realista)</button>
+        <p class="ed-hint">Sube una foto y elige «Stiletto suela roja», uñas, brillo, gemelos… La IA gratuita lo pone realista en la pose que tenga.</p>
+      </div>
       <div class="ed-row pj-actions">
         <button class="ed-btn" id="pjToEditor" type="button">🖌️ Abrir en el Editor</button>
         <button class="ed-btn ed-primary" id="pjDownload" type="button">⬇ Descargar PNG</button>

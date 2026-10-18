@@ -518,6 +518,10 @@
       setTimeout(() => URL.revokeObjectURL(url), 8000);
     }, 'image/png');
   });
+  $('pjMyPhoto').addEventListener('click', () => {
+    window.abrirHerramienta('appEditor');
+    if (typeof window.editorAbrirIA === 'function') window.editorAbrirIA();
+  });
   $('pjToEditor').addEventListener('click', () => {
     if (typeof window.editorAbrirCanvas !== 'function') { toast('El editor no está disponible.'); return; }
     const c = output();
