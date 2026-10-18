@@ -1411,7 +1411,7 @@
     img.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen. Prueba con otro archivo.'); };
     img.src = url;
   }
-  // Para otras herramientas (p. ej. el Creador de personajes).
+  // Para otras herramientas y el acceso directo «Aplicar a mi foto con IA».
   window.editorAbrirCanvas = (c, name) => loadCanvas(c, name || 'imagen.png');
   window.editorAbrirIA = () => { setTab('ai'); if (!loaded) $('edInput').click(); };
   function loadCanvas(c, name) {

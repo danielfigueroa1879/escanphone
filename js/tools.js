@@ -62,8 +62,8 @@
       desc: 'Combina frente y reverso o centra un documento para imprimir.' },
     { id: 'appAmpliar', emoji: '🔍', title: 'Ampliar foto', badge: 'IA',
       desc: 'Agranda la foto 2×, 3× o 4× con IA (súper resolución).' },
-    { id: 'appPersonaje', emoji: '🏋️‍♀️', title: 'Creador de personajes', badge: 'Nuevo',
-      desc: 'Crea una mujer fitness ilustrada: piernas, piel con brillo, uñas y calzado.' },
+    { id: 'appEditor', run: 'ia', emoji: '📷', title: 'Aplicar a mi foto con IA (realista)', badge: 'IA',
+      desc: 'Sube tu foto y la IA gratuita le pone stilettos, uñas, brillo y más, en la pose que tenga.' },
     { id: 'appEditor', emoji: '🖌️', title: 'Editor de fotos',
       desc: 'Dibuja, escribe, ajusta colores, aplica filtros, recorta y gira.' },
     { id: 'appPDF', emoji: '📚', title: 'Herramientas PDF', badge: 'Suite',
@@ -76,6 +76,11 @@
       desc: 'Pon fondo blanco, azul, verde o rojo detrás de la foto.' },
     { soon: true, emoji: '➕', title: 'Más herramientas', desc: 'Se irán agregando pronto.' }
   ];
+  // Abre la herramienta; «run: 'ia'» entra directo a la pestaña IA del editor.
+  function abrirTool(t) {
+    abrirHerramienta(t.id);
+    if (t.run === 'ia' && typeof window.editorAbrirIA === 'function') window.editorAbrirIA();
+  }
   function renderLauncher() {
     const grid = $('launcherGrid');
     if (!grid) return;
@@ -83,7 +88,7 @@
     HERRAMIENTAS.forEach(t => {
       const card = document.createElement(t.soon ? 'div' : 'button');
       card.className = 'tool-card' + (t.soon ? ' soon' : '');
-      if (!t.soon) { card.type = 'button'; card.addEventListener('click', () => abrirHerramienta(t.id)); }
+      if (!t.soon) { card.type = 'button'; card.addEventListener('click', () => abrirTool(t)); }
       card.innerHTML =
         '<div class="tc-emoji">' + t.emoji + '</div>' +
         '<div class="tc-txt"><h3>' + t.title + '</h3><p>' + t.desc + '</p></div>' +
@@ -114,7 +119,7 @@
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'menu-item';
-      item.addEventListener('click', () => { abrirHerramienta(t.id); cerrarMenu(); });
+      item.addEventListener('click', () => { abrirTool(t); cerrarMenu(); });
       item.innerHTML =
         '<span class="menu-emoji">' + t.emoji + '</span>' +
         '<span class="menu-name">' + t.title + '</span>' +
