@@ -2026,6 +2026,33 @@ body.dark .amp-aviso { background: rgba(255, 65, 71, 0.12); border-color: rgba(2
     border-radius: 8px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
   }
   .ed-modes button[aria-pressed="true"] { background: var(--btn-primary-bg); color: var(--btn-primary-fg); border-color: var(--btn-primary-bg); }
+  /* ================  CREADOR DE PERSONAJES  ================ */
+  @media (min-width: 900px) { #appPersonaje.container { max-width: 1240px; } }
+  .pj-layout {
+    display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 0;
+    background: var(--surface); border: 1.5px solid var(--line); border-radius: 16px; overflow: hidden;
+  }
+  .pj-stage {
+    display: grid; place-items: center; padding: 14px; min-width: 0;
+    background-color: #ececf1;
+    background-image: conic-gradient(#d6d7de 25%, transparent 0 50%, #d6d7de 0 75%, transparent 0);
+    background-size: 18px 18px;
+  }
+  body.dark .pj-stage { background-color: #33333d; background-image: conic-gradient(#2a2a33 25%, transparent 0 50%, #2a2a33 0 75%, transparent 0); }
+  #pjCanvas { display: block; max-width: 100%; max-height: calc(100vh - 210px); width: auto; height: auto; border-radius: 8px; box-shadow: 0 8px 28px rgb(0 0 0 / .25); }
+  .pj-panel { border-left: 1px solid var(--line); padding: 16px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; max-height: calc(100vh - 150px); }
+  .pj-h { margin: 6px 0 -4px; font-size: 14px; letter-spacing: -.01em; }
+  .ed-modes.pj-2 { grid-template-columns: repeat(2, 1fr); margin-top: 0; }
+  .ed-modes.pj-3 { grid-template-columns: repeat(3, 1fr); margin-top: 0; }
+  .ed-modes.pj-3 button, .ed-modes.pj-2 button { height: auto; min-height: 34px; padding: 4px 6px; }
+  #appPersonaje input[type="range"] { width: 100%; accent-color: var(--brand); }
+  .pj-actions .ed-btn { flex: 1 1 140px; }
+  @media (max-width: 899px) {
+    .pj-layout { grid-template-columns: minmax(0, 1fr); }
+    .pj-panel { border-left: 0; border-top: 1px solid var(--line); max-height: none; }
+    #pjCanvas { max-height: 70vh; }
+  }
+
   /* Recortes guardados: tira con desplazamiento horizontal */
   .ed-clips {
     display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; scroll-snap-type: x proximity;
