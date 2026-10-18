@@ -611,6 +611,15 @@
     return pngBlob;
   }
 
+  // Uso desde otros módulos (p. ej. el Editor de fotos): recibe un Blob y
+  // devuelve un PNG sin fondo.
+  window.quitarFondoBlob = async function (blob, progress) {
+    const mod = await import(CDN.imgly);
+    const removeBackground = mod.removeBackground || mod.default;
+    if (typeof removeBackground !== 'function') throw new Error('No se pudo iniciar el removedor de fondo.');
+    return quitarFondoIA(removeBackground, blob, progress);
+  };
+
   window.colorSet = (btn, hex) => {
     colorSel = hex;
     $('colorChips').querySelectorAll('.color-chip').forEach(b => b.classList.toggle('active', b === btn));

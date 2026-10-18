@@ -890,6 +890,31 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M5 6V4h14v2"/><path d="M12 4v16"/><path d="M9 20h6"/></svg>
         </button>
         <hr>
+        <button class="ed-tool" type="button" data-tool="select" aria-pressed="false" title="Seleccionar, copiar y pegar (S)" aria-label="Seleccionar y copiar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="3 3"><rect x="4" y="4" width="16" height="16" rx="1"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="recolor" aria-pressed="false" title="Cambiar color de ropa u objeto (K)" aria-label="Cambiar color">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 6l2 4 2-1v12h8V9l2 1 2-4-4-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3Z"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="warp" aria-pressed="false" title="Deformar: agrandar, reducir o empujar (D)" aria-label="Deformar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/><path d="m12 8-1.5 1.5M12 8l1.5 1.5M12 16l-1.5-1.5M12 16l1.5-1.5"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="gloss" aria-pressed="false" title="Brillo de piel (G)" aria-label="Brillo de piel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8Z"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="clone" aria-pressed="false" title="Tampón de clonar (J) · Alt+clic elige el origen" aria-label="Tampón de clonar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v4l-1 3h-4L9 7Z"/><path d="M5 14a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2H5Z"/><path d="M5 19h14"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="blur" aria-pressed="false" title="Suavizar / desenfocar (U)" aria-label="Suavizar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/><path d="M9.5 15a2.5 2.5 0 0 0 2.5 2.5"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="eyedropper" aria-pressed="false" title="Cuentagotas: tomar un color de la foto (I) · Alt+clic con el pincel" aria-label="Cuentagotas">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m14 6 4 4"/><path d="M17.5 2.5a2.1 2.1 0 0 1 3 3L18 8l-4-4Z"/><path d="M15 7 5 17l-1 4 4-1L18 10"/></svg>
+        </button>
+        <hr>
+        <button class="ed-tool" type="button" data-tool="hand" aria-pressed="false" title="Mano: mover la vista (H) · también con barra espaciadora" aria-label="Mano">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6-2.4l-3.6-3.6a2 2 0 0 1 2.8-2.8L7 15"/></svg>
+        </button>
         <button class="ed-tool" type="button" data-tool="crop" aria-pressed="false" title="Recortar (C)" aria-label="Recortar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
         </button>
@@ -899,6 +924,11 @@
         <div class="ed-stage" id="edStage">
           <canvas id="edView" width="1" height="1" aria-label="Lienzo de edición"></canvas>
           <div class="ed-ring" id="edRing" hidden></div>
+          <div class="ed-zoom" aria-label="Zoom">
+            <button type="button" id="edZoomOut" title="Alejar (Ctrl −)" aria-label="Alejar">−</button>
+            <button type="button" id="edZoomFit" title="Ajustar a la pantalla (Ctrl 0)">100%</button>
+            <button type="button" id="edZoomIn" title="Acercar (Ctrl +)" aria-label="Acercar">+</button>
+          </div>
         </div>
         <div class="ed-status">
           <span id="edStatusTool">Pincel · arrastra sobre la foto para dibujar</span>
@@ -915,15 +945,51 @@
         </div>
 
         <div class="ed-pane" data-pane="draw">
-          <div class="ed-group">
+          <div class="ed-group" id="edSelGroup" hidden>
+            <span class="ed-label">Copiar y pegar</span>
+            <p class="ed-hint" id="edSelHint">Arrastra sobre la foto para marcar la zona que quieres copiar.</p>
+            <div class="ed-row">
+              <button class="ed-btn" id="edCopy" type="button" disabled>Copiar zona</button>
+              <button class="ed-btn" id="edPaste" type="button" disabled>Pegar</button>
+            </div>
+            <label class="ed-check"><input type="checkbox" id="edKeepRatio" checked> Mantener proporción al cambiar tamaño</label>
+            <div class="ed-row" id="edPieceRow" hidden>
+              <button class="ed-btn" id="edPieceFlip" type="button">Voltear ↔</button>
+              <button class="ed-btn" id="edPieceCancel" type="button">Descartar</button>
+              <button class="ed-btn ed-primary" id="edPieceApply" type="button">Fijar aquí</button>
+            </div>
+            <p class="ed-hint">Lo copiado se mantiene aunque abras otra foto, así puedes pegarlo en ella.</p>
+          </div>
+          <div class="ed-group" id="edFxGroup" hidden>
+            <div id="edWarpModes">
+              <span class="ed-label">Modo</span>
+              <div class="ed-modes">
+                <button type="button" data-warp="bloat" aria-pressed="true">Agrandar</button>
+                <button type="button" data-warp="pinch" aria-pressed="false">Reducir</button>
+                <button type="button" data-warp="push" aria-pressed="false">Empujar</button>
+              </div>
+            </div>
+            <label class="ed-label" for="edFxSize">Tamaño del pincel <output id="edFxSizeOut">60 px</output></label>
+            <input type="range" id="edFxSize" min="10" max="300" value="60">
+            <label class="ed-label" for="edFxStrength">Intensidad <output id="edFxStrengthOut">50 %</output></label>
+            <input type="range" id="edFxStrength" min="5" max="100" value="50">
+            <button class="ed-btn" id="edCloneSrc" type="button" hidden>📍 Elegir origen</button>
+            <p class="ed-hint" id="edFxHint"></p>
+          </div>
+          <div class="ed-group" id="edColorGroup">
             <span class="ed-label">Color</span>
             <div class="ed-swatches" id="edSwatches"></div>
           </div>
-          <div class="ed-group">
+          <div class="ed-group" id="edRecolorGroup" hidden>
+            <label class="ed-label" for="edTol">Tolerancia <output id="edTolOut">35</output></label>
+            <input type="range" id="edTol" min="5" max="100" value="35">
+            <p class="ed-hint">Elige el color nuevo arriba y toca la prenda u objeto. Se conservan las sombras y arrugas. Si no se pinta entero, sube la tolerancia o toca las partes que falten.</p>
+          </div>
+          <div class="ed-group" id="edSizeGroup">
             <label class="ed-label" for="edSize">Grosor <output id="edSizeOut">8 px</output></label>
             <input type="range" id="edSize" min="1" max="80" value="8">
           </div>
-          <div class="ed-group">
+          <div class="ed-group" id="edOpacityGroup">
             <label class="ed-label" for="edOpacity">Opacidad <output id="edOpacityOut">100 %</output></label>
             <input type="range" id="edOpacity" min="5" max="100" value="100">
           </div>
@@ -948,6 +1014,11 @@
         </div>
 
         <div class="ed-pane" data-pane="adjust" hidden>
+          <div class="ed-group">
+            <span class="ed-label">Fondo</span>
+            <button class="ed-btn ed-primary" id="edRemoveBg" type="button">🪄 Quitar fondo (IA)</button>
+            <p class="ed-hint" id="edBgStatus">Deja la foto con fondo transparente. La primera vez descarga el modelo (~90 MB).</p>
+          </div>
           <div class="ed-group"><label class="ed-label" for="edAdjBrightness">Brillo <output>0</output></label><input type="range" id="edAdjBrightness" data-adj="brightness" min="-100" max="100" value="0"></div>
           <div class="ed-group"><label class="ed-label" for="edAdjContrast">Contraste <output>0</output></label><input type="range" id="edAdjContrast" data-adj="contrast" min="-100" max="100" value="0"></div>
           <div class="ed-group"><label class="ed-label" for="edAdjSaturation">Saturación <output>0</output></label><input type="range" id="edAdjSaturation" data-adj="saturation" min="-100" max="100" value="0"></div>
