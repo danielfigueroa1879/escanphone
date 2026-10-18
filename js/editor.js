@@ -150,7 +150,7 @@
     vctx.drawImage(drawLayer, 0, 0);
     if (drawing && tool !== 'eraser') { vctx.globalAlpha = opacity(); vctx.drawImage(strokeLayer, 0, 0); vctx.globalAlpha = 1; }
     if (tool === 'crop' && crop) drawCropOverlay();
-    if (piece) drawPiece(vctx, piece.view, piece.draw);
+    if (piece) drawPiece(vctx, piece.img);
     if (piece || sel) drawSelOverlay(piece || sel);
     if (tool === 'clone' && cloneSrc) drawCloneMarker();
   }
@@ -323,7 +323,7 @@
     const mutated = (drawing && tool === 'eraser') || !!fx;
     if (fx) { clearInterval(fx.timer); fx = null; }
     drawing = false; cropMode = null;
-    if (selMode === 'new') sel = null;
+    if (selMode === 'new' || selMode === 'lasso') sel = null;
     selMode = null; pointerId = null;
     strokeLayer.getContext('2d').clearRect(0, 0, strokeLayer.width, strokeLayer.height);
     if (mutated) restore(hIndex); else render();
@@ -536,9 +536,10 @@
   }
 
   // ---------- Seleccionar, copiar y pegar ----------
-  // La zona copiada guarda la foto, la foto con ajustes (para verla igual
-  // mientras flota) y los trazos. Al fijarla se pega en la foto y en los trazos.
-  let selMode = null, selAnchor = null, selOffset = null;
+  // La zona se marca como rectángulo, círculo o a mano alzada. Al copiarla se
+  // guarda (foto + trazos) recortada con esa forma y fondo transparente, en la
+  // tira de «Recortes guardados», que persiste en el dispositivo.
+  let selMode = null, selAnchor = null, selOffset = null, selShape = 'rect';
   const roundR = r => ({ x: Math.round(r.x), y: Math.round(r.y), w: Math.max(1, Math.round(r.w)), h: Math.max(1, Math.round(r.h)) });
   function hitBox(p, r) {
     const tol = 22 * pxScale(), corners = cropCorners(r);
@@ -548,6 +549,12 @@
     if (p.x > r.x - m && p.x < r.x + r.w + m && p.y > r.y - m && p.y < r.y + r.h + m) return { inside: true };
     return null;
   }
+  function selPath(ctx, z, ox = 0, oy = 0) {
+    ctx.beginPath();
+    if (z.shape === 'ellipse') ctx.ellipse(z.x + z.w / 2 + ox, z.y + z.h / 2 + oy, z.w / 2, z.h / 2, 0, 0, Math.PI * 2);
+    else if (z.shape === 'lasso') { z.pts.forEach((q, i) => i ? ctx.lineTo(q.x + ox, q.y + oy) : ctx.moveTo(q.x + ox, q.y + oy)); ctx.closePath(); }
+    else ctx.rect(z.x + ox, z.y + oy, z.w, z.h);
+  }
   function selDown(p) {
     if (piece) {
       const h = hitBox(p, piece);
@@ -555,14 +562,21 @@
       if (h) { selMode = 'move'; selOffset = { x: p.x - piece.x, y: p.y - piece.y }; return; }
       commitPiece();
     }
-    selMode = 'new'; selAnchor = { x: clamp(p.x, 0, base.width), y: clamp(p.y, 0, base.height) };
-    sel = { x: selAnchor.x, y: selAnchor.y, w: 0, h: 0 };
+    const q = { x: clamp(p.x, 0, base.width), y: clamp(p.y, 0, base.height) };
+    if (selShape === 'lasso') { selMode = 'lasso'; sel = { shape: 'lasso', pts: [q], x: q.x, y: q.y, w: 0, h: 0 }; }
+    else { selMode = 'new'; selAnchor = q; sel = { shape: selShape, x: q.x, y: q.y, w: 0, h: 0 }; }
     updateSelUI();
   }
   function selMove(p) {
+    const px = clamp(p.x, 0, base.width), py = clamp(p.y, 0, base.height);
     if (selMode === 'new') {
-      const px = clamp(p.x, 0, base.width), py = clamp(p.y, 0, base.height);
-      sel = { x: Math.min(px, selAnchor.x), y: Math.min(py, selAnchor.y), w: Math.abs(px - selAnchor.x), h: Math.abs(py - selAnchor.y) };
+      sel = { shape: selShape, x: Math.min(px, selAnchor.x), y: Math.min(py, selAnchor.y), w: Math.abs(px - selAnchor.x), h: Math.abs(py - selAnchor.y) };
+    } else if (selMode === 'lasso' && sel) {
+      const l = sel.pts[sel.pts.length - 1];
+      if (Math.hypot(px - l.x, py - l.y) < 2 * pxScale()) return;
+      sel.pts.push({ x: px, y: py });
+      const xs = sel.pts.map(q => q.x), ys = sel.pts.map(q => q.y);
+      sel.x = Math.min(...xs); sel.y = Math.min(...ys); sel.w = Math.max(...xs) - sel.x; sel.h = Math.max(...ys) - sel.y;
     } else if (selMode === 'move' && piece) {
       piece.x = p.x - selOffset.x; piece.y = p.y - selOffset.y;
     } else if (selMode === 'resize' && piece) {
@@ -577,48 +591,53 @@
     else if (sel) $('edStatusSize').textContent = `Zona ${Math.round(sel.w)} × ${Math.round(sel.h)} px`;
   }
   function selUp() {
-    if (selMode === 'new' && sel && (sel.w < 4 || sel.h < 4)) sel = null;
+    if ((selMode === 'new' || selMode === 'lasso') && sel && (sel.w < 4 || sel.h < 4 || (sel.shape === 'lasso' && sel.pts.length < 3))) sel = null;
     selMode = null; updateSelUI(); render();
   }
-  function drawPiece(ctx, src, draw) {
+  function drawPiece(ctx, src) {
     ctx.save();
     ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
     if (piece.flip) { ctx.translate(piece.x + piece.w, piece.y); ctx.scale(-1, 1); }
     else ctx.translate(piece.x, piece.y);
     ctx.drawImage(src, 0, 0, piece.w, piece.h);
-    if (draw) ctx.drawImage(draw, 0, 0, piece.w, piece.h);
     ctx.restore();
   }
-  function drawSelOverlay(r) {
+  function drawSelOverlay(z) {
     const s = pxScale();
     vctx.save();
     vctx.lineWidth = 1.5 * s;
     vctx.setLineDash([6 * s, 4 * s]);
-    vctx.strokeStyle = '#000'; vctx.strokeRect(r.x, r.y, r.w, r.h);
-    vctx.lineDashOffset = 6 * s; vctx.strokeStyle = '#fff'; vctx.strokeRect(r.x, r.y, r.w, r.h);
+    const outline = () => { if (piece) { vctx.beginPath(); vctx.rect(z.x, z.y, z.w, z.h); } else selPath(vctx, z); };
+    vctx.strokeStyle = '#000'; outline(); vctx.stroke();
+    vctx.lineDashOffset = 6 * s; vctx.strokeStyle = '#fff'; outline(); vctx.stroke();
     if (piece) {
       vctx.setLineDash([]); vctx.fillStyle = '#fff'; vctx.strokeStyle = '#000'; vctx.lineWidth = 1 * s;
       const hs = 14 * s;
-      cropCorners(r).forEach(([x, y]) => { vctx.fillRect(x - hs / 2, y - hs / 2, hs, hs); vctx.strokeRect(x - hs / 2, y - hs / 2, hs, hs); });
+      cropCorners(z).forEach(([x, y]) => { vctx.fillRect(x - hs / 2, y - hs / 2, hs, hs); vctx.strokeRect(x - hs / 2, y - hs / 2, hs, hs); });
     }
     vctx.restore();
   }
   function copySel() {
     if (!sel) { toast('Primero marca la zona que quieres copiar.'); return; }
     commitPiece();
-    const r = roundR(sel);
-    clip = { base: cropCanvas(base, r), view: cropCanvas(adjCanvas, r), draw: cropCanvas(drawLayer, r), x: r.x, y: r.y };
-    toast('Zona copiada. Pulsa Pegar.');
-    updateSelUI();
+    const r = roundR(sel), img = mk(r.w, r.h), c = img.getContext('2d');
+    c.drawImage(base, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+    c.drawImage(drawLayer, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+    if (sel.shape !== 'rect') { c.globalCompositeOperation = 'destination-in'; selPath(c, sel, -r.x, -r.y); c.fill(); }
+    addClip(img, r.x, r.y);
+    toast('Zona copiada y guardada en «Recortes guardados».');
   }
   function pasteClip() {
-    if (!clip || !loaded) return;
+    if (!clip) return;
+    if (!loaded) { toast('Primero abre una foto para pegar el recorte.'); return; }
     if (tool !== 'select') { setTool('select'); setTab('draw', true); }
     commitPiece();
-    const w = clip.base.width, h = clip.base.height;
+    let w = clip.img.width, h = clip.img.height;
+    // Si el recorte es más grande que la foto, se achica para que quepa.
+    const k = Math.min(1, base.width * .9 / w, base.height * .9 / h); w *= k; h *= k;
     const off = Math.round(Math.min(base.width, base.height) * 0.05);
     const x = clamp(clip.x + off, 0, Math.max(0, base.width - w)), y = clamp(clip.y + off, 0, Math.max(0, base.height - h));
-    piece = { base: clip.base, view: clip.view, draw: clip.draw, x, y, w, h, ow: w, oh: h, flip: false };
+    piece = { img: clip.img, x, y, w, h, ow: w, oh: h, flip: false };
     sel = null; updateSelUI(); render();
     $('edStatusTool').textContent = 'Arrastra lo pegado para moverlo y sus esquinas para cambiar el tamaño';
   }
@@ -626,8 +645,7 @@
     if (!piece) return;
     const nb = mk(base.width, base.height), c = nb.getContext('2d');
     c.drawImage(base, 0, 0);
-    drawPiece(c, piece.base, null);
-    drawPiece(drawLayer.getContext('2d'), piece.draw, null);
+    drawPiece(c, piece.img);
     piece = null; updateSelUI();
     setBase(nb); pushHistory(); render();
   }
@@ -638,14 +656,105 @@
     $('edPieceRow').hidden = !piece;
     $('edSelHint').textContent = piece
       ? 'Mueve lo pegado y arrastra sus esquinas para agrandarlo o achicarlo. Luego pulsa «Fijar aquí».'
-      : sel ? 'Zona marcada. Pulsa «Copiar zona» y luego «Pegar».'
+      : sel ? 'Zona marcada. Pulsa «Copiar zona» y luego «Pegar» o toca su recorte guardado.'
+      : selShape === 'lasso' ? 'Dibuja con el dedo o el mouse el contorno de lo que quieres copiar.'
       : 'Arrastra sobre la foto para marcar la zona que quieres copiar.';
   }
+  $$('[data-shape]', root).forEach(b => b.addEventListener('click', () => {
+    selShape = b.dataset.shape;
+    $$('[data-shape]', root).forEach(x => x.setAttribute('aria-pressed', x === b));
+    sel = null; updateSelUI(); render();
+  }));
   $('edCopy').addEventListener('click', copySel);
   $('edPaste').addEventListener('click', pasteClip);
   $('edPieceApply').addEventListener('click', commitPiece);
   $('edPieceCancel').addEventListener('click', discardPiece);
   $('edPieceFlip').addEventListener('click', () => { if (piece) { piece.flip = !piece.flip; render(); } });
+
+  // ---------- Recortes guardados (IndexedDB, solo en este dispositivo) ----------
+  const MAX_CLIPS = 40;
+  let clips = [];
+  const clipDB = (() => {
+    let dbp = null;
+    const open = () => dbp || (dbp = new Promise((res, rej) => {
+      const r = indexedDB.open('editorFotos', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('recortes', { keyPath: 'id' });
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    }));
+    const run = async (mode, fn) => {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const t = db.transaction('recortes', mode), req = fn(t.objectStore('recortes'));
+        t.oncomplete = () => res(req && req.result); t.onerror = () => rej(t.error);
+      });
+    };
+    return {
+      all: () => run('readonly', st => st.getAll()),
+      put: v => run('readwrite', st => st.put(v)),
+      del: id => run('readwrite', st => st.delete(id))
+    };
+  })();
+  function addClip(img, x, y, save = true, id = null, t = Date.now()) {
+    const item = { id: id || 'c' + t + Math.random().toString(36).slice(2, 7), img, x, y, t };
+    clips.unshift(item); clip = item;
+    while (clips.length > MAX_CLIPS) { const old = clips.pop(); clipDB.del(old.id).catch(() => {}); }
+    if (save) img.toBlob(blob => { if (blob) clipDB.put({ id: item.id, blob, x, y, t }).catch(() => {}); }, 'image/png');
+    renderClips(); updateSelUI();
+  }
+  function removeClip(item) {
+    clips = clips.filter(c => c !== item);
+    if (clip === item) clip = clips[0] || null;
+    clipDB.del(item.id).catch(() => {});
+    renderClips(); updateSelUI();
+  }
+  function renderClips() {
+    const wrap = $('edClips');
+    wrap.innerHTML = '';
+    const add = document.createElement('button');
+    add.type = 'button'; add.className = 'ed-clip-add'; add.textContent = '＋'; add.title = 'Agregar una imagen como recorte';
+    add.addEventListener('click', () => $('edClipInput').click());
+    wrap.append(add);
+    clips.forEach(item => {
+      const el = document.createElement('div');
+      el.className = 'ed-clip' + (item === clip ? ' active' : '');
+      const main = document.createElement('button');
+      main.type = 'button'; main.className = 'ed-clip-main'; main.title = 'Pegar este recorte';
+      const th = mk(1, 1), s = Math.min(1, 66 / Math.max(item.img.width, item.img.height));
+      th.width = Math.max(1, Math.round(item.img.width * s)); th.height = Math.max(1, Math.round(item.img.height * s));
+      th.getContext('2d').drawImage(item.img, 0, 0, th.width, th.height);
+      main.append(th);
+      main.addEventListener('click', () => { clip = item; renderClips(); pasteClip(); });
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'ed-clip-del'; del.textContent = '✕'; del.setAttribute('aria-label', 'Eliminar recorte');
+      del.addEventListener('click', () => removeClip(item));
+      el.append(main, del);
+      wrap.append(el);
+    });
+    $('edClipCount').textContent = clips.length ? clips.length : '';
+  }
+  $('edClipInput').addEventListener('change', e => {
+    [...e.target.files].filter(f => f.type.startsWith('image/')).forEach(f => {
+      createImageBitmap(f).then(bmp => {
+        const s = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+        const c = mk(Math.round(bmp.width * s), Math.round(bmp.height * s));
+        c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        addClip(c, 0, 0);
+      }).catch(() => toast('No se pudo leer esa imagen.'));
+    });
+    e.target.value = '';
+  });
+  (async () => {
+    try {
+      const rows = (await clipDB.all()) || [];
+      rows.sort((a, b) => a.t - b.t);
+      for (const r of rows) {
+        const bmp = await createImageBitmap(r.blob), c = mk(bmp.width, bmp.height);
+        c.getContext('2d').drawImage(bmp, 0, 0);
+        addClip(c, r.x, r.y, false, r.id, r.t);
+      }
+    } catch (_) { /* sin IndexedDB: los recortes solo duran mientras la app esté abierta */ }
+    renderClips(); updateSelUI();
+  })();
 
   // ---------- Cambiar color (ropa u objetos) ----------
   // Varita mágica desde el punto tocado (compara tono más que luz, para

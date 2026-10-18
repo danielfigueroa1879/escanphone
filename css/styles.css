@@ -2026,6 +2026,27 @@ body.dark .amp-aviso { background: rgba(255, 65, 71, 0.12); border-color: rgba(2
     border-radius: 8px; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer;
   }
   .ed-modes button[aria-pressed="true"] { background: var(--btn-primary-bg); color: var(--btn-primary-fg); border-color: var(--btn-primary-bg); }
+  /* Recortes guardados: tira con desplazamiento horizontal */
+  .ed-clips {
+    display: flex; gap: 8px; overflow-x: auto; padding: 4px 2px 8px; scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+  }
+  .ed-clip { position: relative; flex: none; scroll-snap-align: start; }
+  .ed-clip-main, .ed-clip-add {
+    width: 76px; height: 76px; padding: 4px; border-radius: 10px; cursor: pointer;
+    border: 1.5px solid var(--line); display: grid; place-items: center;
+    background-color: var(--ed-check-b);
+    background-image: conic-gradient(var(--ed-check-a) 25%, transparent 0 50%, var(--ed-check-a) 0 75%, transparent 0);
+    background-size: 12px 12px;
+  }
+  .ed-clip-main canvas { max-width: 100%; max-height: 100%; display: block; }
+  .ed-clip.active .ed-clip-main { border-color: var(--brand); box-shadow: 0 0 0 1.5px var(--brand); }
+  .ed-clip-add { background: var(--surface-2); border-style: dashed; color: var(--ink-mute); font-size: 26px; font-weight: 300; }
+  .ed-clip-del {
+    position: absolute; top: -6px; right: -6px; width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font-size: 12px; line-height: 1;
+    display: grid; place-items: center; cursor: pointer; padding: 0;
+  }
   .ed-filters { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .ed-flt {
     background: none; border: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; align-items: center;
