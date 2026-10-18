@@ -896,6 +896,12 @@
         <button class="ed-tool" type="button" data-tool="recolor" aria-pressed="false" title="Cambiar color de ropa u objeto (K)" aria-label="Cambiar color">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 6l2 4 2-1v12h8V9l2 1 2-4-4-3c-.5 1.5-2 2.5-4 2.5S8.5 4.5 8 3Z"/></svg>
         </button>
+        <button class="ed-tool" type="button" data-tool="warp" aria-pressed="false" title="Deformar: agrandar, reducir o empujar (D)" aria-label="Deformar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v8M8 12h8"/><path d="m12 8-1.5 1.5M12 8l1.5 1.5M12 16l-1.5-1.5M12 16l1.5-1.5"/></svg>
+        </button>
+        <button class="ed-tool" type="button" data-tool="gloss" aria-pressed="false" title="Brillo de piel (G)" aria-label="Brillo de piel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8Z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8Z"/></svg>
+        </button>
         <button class="ed-tool" type="button" data-tool="crop" aria-pressed="false" title="Recortar (C)" aria-label="Recortar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
         </button>
@@ -935,6 +941,21 @@
               <button class="ed-btn ed-primary" id="edPieceApply" type="button">Fijar aquí</button>
             </div>
             <p class="ed-hint">Lo copiado se mantiene aunque abras otra foto, así puedes pegarlo en ella.</p>
+          </div>
+          <div class="ed-group" id="edFxGroup" hidden>
+            <div id="edWarpModes">
+              <span class="ed-label">Modo</span>
+              <div class="ed-modes">
+                <button type="button" data-warp="bloat" aria-pressed="true">Agrandar</button>
+                <button type="button" data-warp="pinch" aria-pressed="false">Reducir</button>
+                <button type="button" data-warp="push" aria-pressed="false">Empujar</button>
+              </div>
+            </div>
+            <label class="ed-label" for="edFxSize">Tamaño del pincel <output id="edFxSizeOut">60 px</output></label>
+            <input type="range" id="edFxSize" min="10" max="300" value="60">
+            <label class="ed-label" for="edFxStrength">Intensidad <output id="edFxStrengthOut">50 %</output></label>
+            <input type="range" id="edFxStrength" min="5" max="100" value="50">
+            <p class="ed-hint" id="edFxHint"></p>
           </div>
           <div class="ed-group" id="edColorGroup">
             <span class="ed-label">Color</span>

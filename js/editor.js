@@ -56,6 +56,8 @@
     text: 'Texto · toca la foto para poner el texto',
     select: 'Seleccionar · marca una zona, cópiala y pégala donde quieras',
     recolor: 'Cambiar color · toca la prenda u objeto que quieres pintar',
+    warp: 'Deformar · mantén presionado para agrandar o reducir, o arrastra para empujar',
+    gloss: 'Brillo de piel · pinta sobre la piel para darle brillo',
     crop: 'Recorte · ajusta el marco y pulsa Aplicar'
   };
 
@@ -284,6 +286,7 @@
     if (tool === 'crop') { cropDown(p); pointerId = e.pointerId; view.setPointerCapture(e.pointerId); return; }
     if (tool === 'select') { selDown(p); pointerId = e.pointerId; view.setPointerCapture(e.pointerId); requestRender(); return; }
     if (tool === 'recolor') { recolorAt(p); return; }
+    if (tool === 'warp' || tool === 'gloss') { fxDown(p); pointerId = e.pointerId; view.setPointerCapture(e.pointerId); return; }
     if (tool === 'text') {
       if (drawText(drawLayer.getContext('2d'), p)) { pushHistory(); render(); }
       else $('edTextValue').focus();
@@ -302,6 +305,7 @@
     const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     if (tool === 'crop') { cropMove(toImg(e)); requestRender(); return; }
     if (tool === 'select') { selMove(toImg(e)); requestRender(); return; }
+    if (tool === 'warp' || tool === 'gloss') { evs.forEach(ev => fxMove(toImg(ev))); return; }
     if (!drawing) return;
     const c = strokeLayer.getContext('2d');
     if (tool === 'brush') {
@@ -320,6 +324,7 @@
     pointerId = null;
     if (tool === 'crop') { cropMode = null; return; }
     if (tool === 'select') { selUp(); return; }
+    if (tool === 'warp' || tool === 'gloss') { fxUp(); return; }
     if (!drawing) return;
     drawing = false;
     const moved = Math.hypot(last.x - start.x, last.y - start.y) > 2;
@@ -339,8 +344,9 @@
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x + .01, b.y); ctx.stroke(); ctx.restore();
   }
   function updateRing(e) {
-    if (e.pointerType !== 'mouse' || !(tool === 'brush' || tool === 'eraser')) { ring.hidden = true; return; }
-    const sr = stage.getBoundingClientRect(), d = +$('edSize').value;
+    const fx = tool === 'warp' || tool === 'gloss';
+    if (e.pointerType !== 'mouse' || !(tool === 'brush' || tool === 'eraser' || fx)) { ring.hidden = true; return; }
+    const sr = stage.getBoundingClientRect(), d = fx ? +$('edFxSize').value : +$('edSize').value;
     ring.hidden = false;
     ring.style.width = ring.style.height = Math.max(d, 4) + 'px';
     ring.style.left = (e.clientX - sr.left) + 'px'; ring.style.top = (e.clientY - sr.top) + 'px';
@@ -638,20 +644,121 @@
     }
   });
 
+  // ---------- Deformar y Brillo de piel ----------
+  // Ambas trabajan directo sobre los píxeles de la foto. Al empezar el trazo
+  // se crea una copia nueva de la foto (el historial conserva la anterior).
+  let fx = null, warpMode = 'bloat';
+  const FX_HINTS = {
+    bloat: 'Mantén presionado sobre una zona para agrandarla (p. ej. gemelos o sóleo). Cuanto más tiempo, más crece.',
+    pinch: 'Mantén presionado sobre una zona para reducirla (p. ej. marcar la cintura).',
+    push: 'Arrastra para empujar la silueta en esa dirección y moldear el contorno.',
+    gloss: 'Pinta sobre la piel de piernas y pies para darle un brillo intenso, tipo aceite. Repite el trazo para más brillo.'
+  };
+  function fxDown(p) {
+    const W = base.width, H = base.height;
+    const nb = mk(W, H), ctx = nb.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(base, 0, 0);
+    base = nb; baseData = ctx.getImageData(0, 0, W, H);
+    fx = { ctx, last: p, orig: null, mask: null, timer: null };
+    if (tool === 'gloss') { fx.orig = new Uint8ClampedArray(baseData.data); fx.mask = new Float32Array(W * H); }
+    fxDab(p, p);
+    if (tool === 'warp' && warpMode !== 'push') fx.timer = setInterval(() => fxDab(fx.last, fx.last), 50);
+  }
+  function fxMove(p) {
+    if (!fx) return;
+    const R = fxRadius(), a = fx.last, dist = Math.hypot(p.x - a.x, p.y - a.y);
+    if (tool === 'warp' && warpMode !== 'push') { fx.last = p; if (dist > R / 4) fxDab(p, p); return; }
+    const step = Math.max(1, R / 4), n = Math.ceil(dist / step);
+    for (let i = 1; i <= n; i++) {
+      const q = { x: a.x + (p.x - a.x) * i / n, y: a.y + (p.y - a.y) * i / n };
+      fxDab(fx.last, q); fx.last = q;
+    }
+  }
+  function fxUp() {
+    if (!fx) return;
+    clearInterval(fx.timer); fx = null;
+    buildFilterThumbs(); pushHistory(); render();
+  }
+  const fxRadius = () => +$('edFxSize').value / 2 * pxScale();
+  function fxDab(from, c) {
+    const W = base.width, H = base.height, R = fxRadius(), k = +$('edFxStrength').value / 100;
+    const x0 = Math.max(0, Math.floor(c.x - R)), y0 = Math.max(0, Math.floor(c.y - R));
+    const x1 = Math.min(W, Math.ceil(c.x + R)), y1 = Math.min(H, Math.ceil(c.y + R));
+    const bw = x1 - x0, bh = y1 - y0;
+    if (bw <= 0 || bh <= 0) return;
+    const d = baseData.data, R2 = R * R;
+    if (tool === 'gloss') {
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const r2 = (x - c.x) * (x - c.x) + (y - c.y) * (y - c.y);
+        if (r2 >= R2) continue;
+        const j = y * W + x, f = (1 - r2 / R2) ** 2;
+        if (f <= fx.mask[j]) continue;
+        fx.mask[j] = f;
+        // Brillo especular: las zonas claras suben mucho más que las oscuras,
+        // así se marca el volumen y la piel se ve húmeda / con aceite.
+        const i = j * 4, o = fx.orig, L = (.299 * o[i] + .587 * o[i + 1] + .114 * o[i + 2]) / 255;
+        // Solo zonas con color (piel); respeta fondos grises, blancos o negros.
+        const mx = Math.max(o[i], o[i + 1], o[i + 2]), mn = Math.min(o[i], o[i + 1], o[i + 2]);
+        const skin = clamp(((mx - mn) / Math.max(mx, 1) - .1) / .15, 0, 1);
+        const g = k * f * skin * (.18 + 1.25 * L * L * L);
+        for (let ch = 0; ch < 3; ch++) d[i + ch] = o[i + ch] + (255 - o[i + ch]) * g;
+      }
+    } else {
+      // Copia de la zona antes del toque, para leer de ella mientras se escribe.
+      const tmp = new Uint8ClampedArray(bw * bh * 4);
+      for (let y = 0; y < bh; y++) tmp.set(d.subarray(((y0 + y) * W + x0) * 4, ((y0 + y) * W + x1) * 4), y * bw * 4);
+      const dx = c.x - from.x, dy = c.y - from.y;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+        const r2 = (x - c.x) * (x - c.x) + (y - c.y) * (y - c.y);
+        if (r2 >= R2) continue;
+        const f = (1 - r2 / R2) ** 2;
+        let sx, sy;
+        if (warpMode === 'push') { sx = x - dx * f * k * 1.4; sy = y - dy * f * k * 1.4; }
+        else {
+          const a = (warpMode === 'bloat' ? -1 : 1) * .12 * k * f;
+          sx = c.x + (x - c.x) * (1 + a); sy = c.y + (y - c.y) * (1 + a);
+        }
+        // Muestreo bilineal dentro de la copia.
+        sx = clamp(sx - x0, 0, bw - 1.001); sy = clamp(sy - y0, 0, bh - 1.001);
+        const ix = sx | 0, iy = sy | 0, fx1 = sx - ix, fy1 = sy - iy;
+        const i00 = (iy * bw + ix) * 4, i10 = i00 + 4, i01 = i00 + bw * 4, i11 = i01 + 4;
+        const i = (y * W + x) * 4;
+        for (let ch = 0; ch < 4; ch++) {
+          const top = tmp[i00 + ch] + (tmp[i10 + ch] - tmp[i00 + ch]) * fx1;
+          const bot = tmp[i01 + ch] + (tmp[i11 + ch] - tmp[i01 + ch]) * fx1;
+          d[i + ch] = top + (bot - top) * fy1;
+        }
+      }
+    }
+    fx.ctx.putImageData(baseData, 0, 0, x0, y0, bw, bh);
+    scheduleProcess();
+  }
+  $$('[data-warp]', root).forEach(b => b.addEventListener('click', () => {
+    warpMode = b.dataset.warp;
+    $$('[data-warp]', root).forEach(x => x.setAttribute('aria-pressed', x === b));
+    $('edFxHint').textContent = FX_HINTS[warpMode];
+  }));
+  $('edFxSize').addEventListener('input', e => $('edFxSizeOut').textContent = e.target.value + ' px');
+  $('edFxStrength').addEventListener('input', e => $('edFxStrengthOut').textContent = e.target.value + ' %');
+
   // ---------- UI: herramientas, pestañas ----------
   function setTool(t) {
     if (tool === 'select' && t !== 'select') { commitPiece(); sel = null; }
     tool = t;
     $$('.ed-tool', root).forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
     $('edStatusTool').textContent = TOOL_HINTS[t];
-    view.style.cursor = t === 'text' ? 'text' : t === 'recolor' ? 'copy' : t === 'crop' ? 'crosshair' : (t === 'brush' || t === 'eraser') ? 'none' : 'crosshair';
+    view.style.cursor = t === 'text' ? 'text' : t === 'recolor' ? 'copy' : t === 'crop' ? 'crosshair' : (t === 'brush' || t === 'eraser' || t === 'warp' || t === 'gloss') ? 'none' : 'crosshair';
     if (t === 'crop') { crop = fullCrop(); setTab('frame', true); }
     else { crop = null; $('edStatusSize').textContent = `${base.width} × ${base.height} px`; if (currentTab === 'frame') setTab('draw', true); }
     $('edTextGroup').hidden = t !== 'text';
     $('edSelGroup').hidden = t !== 'select';
     $('edRecolorGroup').hidden = t !== 'recolor';
-    $('edColorGroup').hidden = t === 'select' || t === 'eraser';
-    $('edSizeGroup').hidden = $('edOpacityGroup').hidden = $('edClear').hidden = t === 'select' || t === 'recolor';
+    const fxTool = t === 'warp' || t === 'gloss';
+    $('edFxGroup').hidden = !fxTool;
+    $('edWarpModes').hidden = t !== 'warp';
+    if (fxTool) $('edFxHint').textContent = FX_HINTS[t === 'gloss' ? 'gloss' : warpMode];
+    $('edColorGroup').hidden = t === 'select' || t === 'eraser' || fxTool;
+    $('edSizeGroup').hidden = $('edOpacityGroup').hidden = $('edClear').hidden = t === 'select' || t === 'recolor' || fxTool;
     $('edFillWrap').hidden = !(t === 'rect' || t === 'ellipse');
     render();
   }
@@ -780,7 +887,7 @@
     if (mod && e.key.toLowerCase() === 'v' && !typing && clip) { e.preventDefault(); pasteClip(); return; }
     if (e.key === 'Enter' && piece) { commitPiece(); return; }
     if (typing || mod || e.altKey) return;
-    const map = { b: 'brush', e: 'eraser', l: 'line', a: 'arrow', r: 'rect', o: 'ellipse', t: 'text', s: 'select', k: 'recolor', c: 'crop' };
+    const map = { b: 'brush', e: 'eraser', l: 'line', a: 'arrow', r: 'rect', o: 'ellipse', t: 'text', s: 'select', k: 'recolor', d: 'warp', g: 'gloss', c: 'crop' };
     const t = map[e.key.toLowerCase()];
     if (t) { setTool(t); if (t !== 'crop') setTab('draw', true); }
     if (e.key === 'Enter' && tool === 'crop') $('edApplyCrop').click();
