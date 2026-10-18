@@ -1095,6 +1095,78 @@
   </footer>
 </div>
 
+<!-- ============================================================
+     ============  HERRAMIENTA: CREADOR DE PERSONAJES  =========
+     Lógica en js/personaje.js. Personaje ilustrado, 100% local.
+     ============================================================ -->
+<div class="container view" id="appPersonaje">
+  <div class="tool-head">
+    <button class="icon-btn back" type="button" onclick="volverInicio()" aria-label="Volver" title="Volver">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <div class="tool-ico">🏋️‍♀️</div>
+    <div class="tool-txt">
+      <h1>Creador de personajes</h1>
+      <p class="subtitle">Crea una mujer fitness ilustrada y ajusta piernas, piel, ropa y calzado.</p>
+    </div>
+    <button class="icon-btn" type="button" onclick="cambiarTema()" aria-label="Cambiar tema" title="Tema">🌓</button>
+  </div>
+
+  <div class="pj-layout">
+    <div class="pj-stage"><canvas id="pjCanvas" width="1000" height="2000" aria-label="Personaje"></canvas></div>
+
+    <div class="pj-panel">
+      <div class="ed-group">
+        <span class="ed-label">Vista</span>
+        <div class="ed-modes pj-2" data-pjopt="vista"><button type="button" data-v="cuerpo">Cuerpo completo</button><button type="button" data-v="piernas">Piernas y pies</button></div>
+      </div>
+
+      <h3 class="pj-h">Cuerpo</h3>
+      <div class="ed-group"><label class="ed-label">Cintura marcada <output></output></label><input type="range" data-pj="cintura" min="0" max="100"></div>
+      <div class="ed-group"><label class="ed-label">Cadera <output></output></label><input type="range" data-pj="cadera" min="0" max="100"></div>
+      <div class="ed-group"><label class="ed-label">Muslos <output></output></label><input type="range" data-pj="muslos" min="0" max="100"></div>
+      <div class="ed-group"><label class="ed-label">Sóleo y gemelo en gota <output></output></label><input type="range" data-pj="gemelos" min="0" max="100"></div>
+      <div class="ed-group"><label class="ed-label">Definición muscular <output></output></label><input type="range" data-pj="definicion" min="0" max="100"></div>
+
+      <h3 class="pj-h">Piel</h3>
+      <div class="ed-group"><span class="ed-label">Tono</span><div class="ed-swatches" data-pjcolor="piel"><button type="button" class="ed-sw" data-v="#f3d1b8" aria-label="#f3d1b8"></button><button type="button" class="ed-sw" data-v="#e6b08c" aria-label="#e6b08c"></button><button type="button" class="ed-sw" data-v="#d79b74" aria-label="#d79b74"></button><button type="button" class="ed-sw" data-v="#b9784f" aria-label="#b9784f"></button><button type="button" class="ed-sw" data-v="#8d5434" aria-label="#8d5434"></button><button type="button" class="ed-sw" data-v="#5a3220" aria-label="#5a3220"></button></div></div>
+      <div class="ed-group"><label class="ed-label">Brillo de piel (PBR) <output></output></label><input type="range" data-pj="brillo" min="0" max="100"></div>
+      <div class="ed-group"><label class="ed-label">Venas naturales en pies <output></output></label><input type="range" data-pj="venas" min="0" max="100"></div>
+
+      <h3 class="pj-h">Estilo</h3>
+      <div class="ed-group">
+        <span class="ed-label">Calzado</span>
+        <div class="ed-modes pj-2" data-pjopt="calzado"><button type="button" data-v="stiletto">Stiletto suela roja</button><button type="button" data-v="descalza">Descalza</button></div>
+        <p class="ed-hint">El stiletto lleva la pala recortada que deja ver la base de los dedos, con la punta cerrada.</p>
+      </div>
+      <div class="ed-group">
+        <span class="ed-label">Uñas</span>
+        <div class="ed-modes pj-3" data-pjopt="unas"><button type="button" data-v="metal">Blanco metálico</button><button type="button" data-v="plata">Plata</button><button type="button" data-v="rojo">Rojo</button><button type="button" data-v="natural">Natural</button><button type="button" data-v="negro">Negro</button></div>
+      </div>
+      <div class="ed-group"><span class="ed-label">Cabello</span><div class="ed-swatches" data-pjcolor="cabello"><button type="button" class="ed-sw" data-v="#120c09" aria-label="#120c09"></button><button type="button" class="ed-sw" data-v="#2b1d16" aria-label="#2b1d16"></button><button type="button" class="ed-sw" data-v="#5a3a24" aria-label="#5a3a24"></button><button type="button" class="ed-sw" data-v="#8a5a2e" aria-label="#8a5a2e"></button><button type="button" class="ed-sw" data-v="#c99a5b" aria-label="#c99a5b"></button><button type="button" class="ed-sw" data-v="#e8d3a6" aria-label="#e8d3a6"></button></div>
+        <div class="ed-modes pj-2" data-pjopt="peinado"><button type="button" data-v="coleta">Coleta</button><button type="button" data-v="suelto">Suelto</button></div></div>
+      <div class="ed-group"><span class="ed-label">Top deportivo</span><div class="ed-swatches" data-pjcolor="top"><button type="button" class="ed-sw" data-v="#15161b" aria-label="#15161b"></button><button type="button" class="ed-sw" data-v="#f4f4f6" aria-label="#f4f4f6"></button><button type="button" class="ed-sw" data-v="#e5484d" aria-label="#e5484d"></button><button type="button" class="ed-sw" data-v="#3e63dd" aria-label="#3e63dd"></button><button type="button" class="ed-sw" data-v="#d6409f" aria-label="#d6409f"></button><button type="button" class="ed-sw" data-v="#30a46c" aria-label="#30a46c"></button></div></div>
+      <div class="ed-group"><span class="ed-label">Short</span><div class="ed-swatches" data-pjcolor="short"><button type="button" class="ed-sw" data-v="#15161b" aria-label="#15161b"></button><button type="button" class="ed-sw" data-v="#f4f4f6" aria-label="#f4f4f6"></button><button type="button" class="ed-sw" data-v="#e5484d" aria-label="#e5484d"></button><button type="button" class="ed-sw" data-v="#3e63dd" aria-label="#3e63dd"></button><button type="button" class="ed-sw" data-v="#d6409f" aria-label="#d6409f"></button><button type="button" class="ed-sw" data-v="#6b7280" aria-label="#6b7280"></button></div></div>
+      <div class="ed-group">
+        <span class="ed-label">Fondo</span>
+        <div class="ed-modes pj-3" data-pjopt="fondo"><button type="button" data-v="gym">Gimnasio</button><button type="button" data-v="estudio">Estudio</button><button type="button" data-v="transparente">Transparente</button></div>
+      </div>
+
+      <div class="ed-row pj-actions">
+        <button class="ed-btn" id="pjToEditor" type="button">🖌️ Abrir en el Editor</button>
+        <button class="ed-btn ed-primary" id="pjDownload" type="button">⬇ Descargar PNG</button>
+      </div>
+      <p class="ed-hint">En el Editor puedes seguir retocándola: Deformar, Brillo de piel, Cambiar color, copiar y pegar, giro 3D…</p>
+    </div>
+  </div>
+
+  <footer class="footer">
+    © 2026 Todos los derechos reservados.<br>
+    Plataforma desarrollada por <span class="autor">Daniel Figueroa Chacama</span>.<br>
+    <span class="rol">Ingeniero en Informática &amp; Ciberseguridad</span>
+  </footer>
+</div>
+
 <!-- Modal: guardar la foto editada -->
 <div class="ed-modal" id="edExportModal" hidden role="dialog" aria-modal="true" aria-labelledby="edExportTitle">
   <div class="ed-sheet">
@@ -1215,5 +1287,7 @@
 <script src="js/pdftools.js"></script>
 <!-- Editor de fotos (módulo independiente, 100% local) -->
 <script src="js/editor.js"></script>
+<!-- Creador de personajes (ilustración 100% local) -->
+<script src="js/personaje.js"></script>
 </body>
 </html>

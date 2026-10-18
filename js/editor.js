@@ -1411,6 +1411,8 @@
     img.onerror = () => { URL.revokeObjectURL(url); toast('No se pudo leer la imagen. Prueba con otro archivo.'); };
     img.src = url;
   }
+  // Para otras herramientas (p. ej. el Creador de personajes).
+  window.editorAbrirCanvas = (c, name) => loadCanvas(c, name || 'imagen.png');
   function loadCanvas(c, name) {
     piece = null; sel = null; updateSelUI();
     Object.keys(adj).forEach(k => adj[k] = 0); filter = 'none'; intensity = 100;
