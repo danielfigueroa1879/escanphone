@@ -193,7 +193,7 @@
   // ====================================================================
   const PDF_TOOLS = [
     { id: 'appOCR',      emoji: '🔎', title: 'OCR / PDF buscable', desc: 'Reconoce texto de escaneos e imágenes y crea un PDF con texto seleccionable.' },
-    { id: 'pdfMerge',    emoji: '🔗', title: 'Unir PDF',           desc: 'Combina varios PDF en uno; reordena y quita archivos antes de unir.' },
+    { id: 'pdfMerge',    emoji: '🔗', title: 'Unir PDF',           desc: 'Combina varios PDF y ordena sus hojas arrastrando las miniaturas.' },
     { id: 'pdfOrganize', emoji: '🗂️', title: 'Organizar PDF',      desc: 'Reordena, rota, duplica, elimina e inserta páginas de otro PDF.' },
     { id: 'pdfExtract',  emoji: '✂️', title: 'Extraer páginas',    desc: 'Crea un PDF nuevo solo con las páginas que elijas.' },
     { id: 'pdfRemove',   emoji: '🗑️', title: 'Eliminar páginas',   desc: 'Quita las páginas marcadas y conserva el resto.' },
@@ -275,55 +275,266 @@
 
   // ====================================================================
   // ==========================  1. UNIR PDF  ==========================
+  // Cada hoja de cada PDF se muestra en miniatura y se ordena arrastrando:
+  // con el mouse en PC y manteniendo presionada la hoja en el celular.
   // ====================================================================
-  const merge = { files: [] };
+  const merge = { sources: {}, pages: [], seq: 0, busy: false };
+  const MG_COLORS = ['#e5484d', '#3e63dd', '#30a46c', '#f2994a', '#8e4ec6', '#12a594', '#d6409f', '#7c5a3a'];
   function buildMerge() {
-    crearVista('pdfMerge', '🔗', 'Unir PDF', 'Combina varios PDF en uno solo.',
+    crearVista('pdfMerge', '🔗', 'Unir PDF', 'Combina varios PDF y ordena sus hojas arrastrando las miniaturas.',
       '<div class="card">' +
-        dropHTML('mrg', 'application/pdf', true, 'Sube tus PDF', 'Toca o arrastra varios archivos PDF') +
-        '<div class="pdf-list" id="mrgList" style="margin-top:14px;"></div>' +
-        '<button class="btn brand full" id="mrgRun" style="margin-top:14px;" disabled>🔗 Unir y descargar</button>' +
+        dropHTML('mrg', 'application/pdf', true, 'Sube tus PDF', 'Toca o arrastra uno o varios archivos PDF') +
+        '<div id="mrgWork" style="display:none;">' +
+          '<div class="mg-top">' +
+            '<div class="mg-files" id="mrgFiles"></div>' +
+            '<div class="mg-actions">' +
+              '<button class="btn sm" id="mrgAdd">➕ Añadir PDF</button>' +
+              '<button class="btn sm" id="mrgReset">↺ Orden original</button>' +
+              '<button class="btn sm danger-btn" id="mrgClear">🗑 Vaciar</button>' +
+            '</div>' +
+          '</div>' +
+          '<p class="name-hint mg-hint" id="mrgHint"></p>' +
+          '<div class="mg-grid" id="mrgGrid"></div>' +
+          '<div class="mg-bottom">' +
+            '<div class="name-row"><label for="mrgName">Nombre</label><input id="mrgName" type="text" value="unido" autocomplete="off"><span class="ext">.pdf</span></div>' +
+            '<button class="btn brand full" id="mrgRun">🔗 Unir y descargar</button>' +
+          '</div>' +
+        '</div>' +
       '</div>' + progHTML('mrg'));
     wireDrop('mrg', addMergeFiles);
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'application/pdf'; inp.multiple = true;
+    inp.addEventListener('change', () => { if (inp.files.length) addMergeFiles(Array.from(inp.files)); inp.value = ''; });
+    $('mrgAdd').addEventListener('click', () => inp.click());
+    $('mrgReset').addEventListener('click', () => {
+      const ord = Object.keys(merge.sources);
+      merge.pages.sort((a, b) => ord.indexOf(a.sid) - ord.indexOf(b.sid) || a.index - b.index);
+      renderMerge();
+    });
+    $('mrgClear').addEventListener('click', () => { merge.sources = {}; merge.pages = []; renderMerge(); });
     $('mrgRun').addEventListener('click', runMerge);
+    const grid = $('mrgGrid');
+    grid.addEventListener('click', e => {
+      const b = e.target.closest('[data-a]'); if (!b) return;
+      const cell = b.closest('.mg-cell'), pg = merge.pages.find(p => p.key === cell.dataset.key);
+      if (!pg) return;
+      if (b.dataset.a === 'rot') { pg.rot = (pg.rot + 90) % 360; const img = cell.querySelector('img'); if (img) img.src = thumbSrc(pg); }
+      else if (b.dataset.a === 'del') { merge.pages = merge.pages.filter(p => p !== pg); renderMerge(); }
+    });
+    makeSortable(grid, keys => {
+      const byKey = {}; merge.pages.forEach(p => { byKey[p.key] = p; });
+      merge.pages = keys.map(k => byKey[k]).filter(Boolean);
+      renumberMerge();
+    });
     renderMerge();
   }
   async function addMergeFiles(files) {
-    for (const f of files) {
-      try { await validarPdf(f); merge.files.push({ file: f, key: f.name + Math.random() }); }
-      catch (e) { toast('«' + f.name + '»: ' + e.message); }
-    }
-    renderMerge();
+    if (merge.busy) { toast('Espera a que terminen de cargar las miniaturas.'); return; }
+    merge.busy = true;
+    try {
+      for (const f of files) {
+        try {
+          await validarPdf(f);
+          const bytes = new Uint8Array(await readAB(f));
+          const pdf = await abrirConPdfjs(bytes);
+          const libre = MAX_PAGES_THUMB - merge.pages.length;
+          if (libre <= 0) { toast('Máximo ' + MAX_PAGES_THUMB + ' hojas en total.'); break; }
+          const n = Math.min(pdf.numPages, libre);
+          if (pdf.numPages > n) toast('«' + f.name + '»: se agregan solo ' + n + ' hojas (máximo ' + MAX_PAGES_THUMB + ').');
+          const k = Object.keys(merge.sources).length;
+          const sid = 's' + (++merge.seq);
+          merge.sources[sid] = { name: f.name, bytes, letter: String.fromCharCode(65 + (k % 26)), color: MG_COLORS[k % MG_COLORS.length] };
+          const added = [];
+          for (let i = 0; i < n; i++) {
+            const pg = { key: sid + '-' + i, sid, index: i, rot: 0, canvas: null };
+            merge.pages.push(pg); added.push(pg);
+          }
+          renderMerge();
+          for (let i = 0; i < added.length; i++) {
+            if (!merge.sources[sid]) break;   // se vació mientras cargaba
+            setProg('mrg', ((i + 1) / added.length) * 100, '«' + f.name + '»: miniatura ' + (i + 1) + '/' + added.length + '…');
+            added[i].canvas = await renderPagina(pdf, i + 1, 260);
+            const img = document.querySelector('.mg-cell[data-key="' + added[i].key + '"] .mg-thumb');
+            if (img) img.innerHTML = '<img alt="Hoja" src="' + thumbSrc(added[i]) + '">';
+          }
+          ocultarProg('mrg');
+          try { pdf.destroy(); } catch (_) {}
+        } catch (e) { ocultarProg('mrg'); toast('«' + f.name + '»: ' + e.message); }
+      }
+    } finally { merge.busy = false; }
+  }
+  // Miniatura girada según la rotación elegida.
+  function thumbSrc(pg) {
+    const c = pg.canvas;
+    if (!c) return '';
+    if (!pg.rot) return pg.thumb || (pg.thumb = c.toDataURL('image/jpeg', 0.8));
+    const o = document.createElement('canvas'), q = pg.rot % 180 !== 0;
+    o.width = q ? c.height : c.width; o.height = q ? c.width : c.height;
+    const x = o.getContext('2d');
+    x.translate(o.width / 2, o.height / 2); x.rotate(pg.rot * Math.PI / 180); x.drawImage(c, -c.width / 2, -c.height / 2);
+    return o.toDataURL('image/jpeg', 0.8);
   }
   function renderMerge() {
-    const items = merge.files.map(x => ({ key: x.key, label: x.file.name, sub: kb(x.file.size) }));
-    pintarListaReordenable($('mrgList'), items, {
-      onReorder: () => { merge.files = items.map(i => merge.files.find(f => f.key === i.key)); renderMerge(); }
+    const has = merge.pages.length > 0 || Object.keys(merge.sources).length > 0;
+    $('mrgWork').style.display = has ? '' : 'none';
+    $('mrgDrop').style.display = has ? 'none' : '';
+    // Archivos (con su letra y color) — quitar un archivo quita sus hojas.
+    const files = $('mrgFiles'); files.innerHTML = '';
+    Object.keys(merge.sources).forEach(sid => {
+      const s = merge.sources[sid], n = merge.pages.filter(p => p.sid === sid).length;
+      const el = document.createElement('span'); el.className = 'mg-file';
+      el.innerHTML = '<b class="mg-dot" style="background:' + s.color + '">' + s.letter + '</b><span>' + esc(s.name) + ' · ' + n + ' h.</span>' +
+        '<button type="button" title="Quitar este PDF" aria-label="Quitar este PDF">✕</button>';
+      el.querySelector('button').addEventListener('click', () => {
+        delete merge.sources[sid]; merge.pages = merge.pages.filter(p => p.sid !== sid); renderMerge();
+      });
+      files.appendChild(el);
     });
-    $('mrgRun').disabled = merge.files.length < 2;
-    if (merge.files.length && merge.files.length < 2) toast('Agrega al menos 2 PDF para unir.');
+    const grid = $('mrgGrid'); grid.innerHTML = '';
+    merge.pages.forEach(pg => {
+      const s = merge.sources[pg.sid];
+      const cell = document.createElement('div');
+      cell.className = 'mg-cell'; cell.dataset.key = pg.key;
+      cell.innerHTML =
+        '<div class="mg-thumb">' + (pg.canvas ? '<img alt="Hoja" src="' + thumbSrc(pg) + '">' : '<span class="mg-spin"></span>') + '</div>' +
+        '<span class="mg-num"></span>' +
+        '<span class="mg-src" style="background:' + s.color + '">' + s.letter + '·' + (pg.index + 1) + '</span>' +
+        '<div class="mg-bar">' +
+          '<button type="button" data-a="rot" title="Girar 90°" aria-label="Girar">↻</button>' +
+          '<button type="button" data-a="del" title="Quitar esta hoja" aria-label="Quitar">✕</button>' +
+        '</div>';
+      grid.appendChild(cell);
+    });
+    renumberMerge();
   }
+  function renumberMerge() {
+    const cells = $('mrgGrid').children;
+    for (let i = 0; i < cells.length; i++) cells[i].querySelector('.mg-num').textContent = i + 1;
+    const n = merge.pages.length, touch = matchMedia('(pointer: coarse)').matches;
+    $('mrgHint').textContent = n
+      ? (touch ? 'Mantén presionada una hoja y muévela a la posición que quieras.' : 'Arrastra las hojas con el mouse para ordenarlas.') +
+        ' ' + n + (n === 1 ? ' hoja.' : ' hojas en total.')
+      : 'No quedan hojas. Añade un PDF.';
+    $('mrgRun').disabled = !n;
+    $('mrgRun').textContent = '🔗 Unir ' + n + (n === 1 ? ' hoja' : ' hojas') + ' y descargar';
+  }
+
+  // Ordenar arrastrando (PC: mouse; celular: mantener presionado y mover).
+  // La hoja deja un hueco en su lugar y las demás se acomodan con animación.
+  function makeSortable(grid, onDrop) {
+    let drag = null, press = null, pt = null, raf = 0;
+    const cellAt = (x, y) => { const el = document.elementFromPoint(x, y); return el && el.closest ? el.closest('.mg-cell') : null; };
+    function flip(mutate) {
+      const cells = Array.from(grid.children), before = new Map(cells.map(c => [c, c.getBoundingClientRect()]));
+      mutate();
+      cells.forEach(c => {
+        if (c === drag.cell || !c.animate) return;
+        const a = before.get(c), b = c.getBoundingClientRect(), dx = a.left - b.left, dy = a.top - b.top;
+        if (dx || dy) c.animate([{ transform: 'translate(' + dx + 'px,' + dy + 'px)' }, { transform: 'none' }], { duration: 170, easing: 'ease-out' });
+      });
+    }
+    function begin(cell, x, y) {
+      const r = cell.getBoundingClientRect();
+      const ghost = cell.cloneNode(true);
+      ghost.classList.add('mg-ghost'); ghost.style.width = r.width + 'px'; ghost.style.height = r.height + 'px';
+      document.body.appendChild(ghost);
+      drag = { cell, ghost, dx: x - r.left, dy: y - r.top };
+      cell.classList.add('mg-placeholder');
+      document.body.classList.add('mg-dragging');
+      if (navigator.vibrate) { try { navigator.vibrate(12); } catch (_) {} }
+      move(x, y);
+      raf = requestAnimationFrame(autoScroll);
+    }
+    function move(x, y) {
+      pt = { x, y };
+      drag.ghost.style.transform = 'translate(' + (x - drag.dx) + 'px,' + (y - drag.dy) + 'px) scale(1.06) rotate(-1.5deg)';
+      const over = cellAt(x, y);
+      if (!over || over === drag.cell || !grid.contains(over)) return;
+      const r = over.getBoundingClientRect(), after = x > r.left + r.width / 2;
+      if (after && over.nextElementSibling !== drag.cell) flip(() => grid.insertBefore(drag.cell, over.nextElementSibling));
+      else if (!after && over.previousElementSibling !== drag.cell) flip(() => grid.insertBefore(drag.cell, over));
+    }
+    // Desplaza la página cuando la hoja se acerca al borde superior o inferior.
+    function autoScroll() {
+      if (!drag) return;
+      const edge = 80, h = window.innerHeight;
+      let v = 0;
+      if (pt.y < edge) v = -Math.ceil((edge - pt.y) / 4);
+      else if (pt.y > h - edge) v = Math.ceil((pt.y - (h - edge)) / 4);
+      if (v) { window.scrollBy(0, v); move(pt.x, pt.y); }
+      raf = requestAnimationFrame(autoScroll);
+    }
+    function end() {
+      cancelAnimationFrame(raf);
+      if (!drag) return;
+      const { cell, ghost } = drag, r = cell.getBoundingClientRect();
+      ghost.style.transition = 'transform .15s ease-out';
+      ghost.style.transform = 'translate(' + r.left + 'px,' + r.top + 'px)';
+      setTimeout(() => ghost.remove(), 160);
+      cell.classList.remove('mg-placeholder');
+      document.body.classList.remove('mg-dragging');
+      drag = null;
+      onDrop(Array.from(grid.children).map(c => c.dataset.key));
+    }
+    const startable = e => {
+      const cell = e.target.closest && e.target.closest('.mg-cell');
+      return cell && grid.contains(cell) && !e.target.closest('button') ? cell : null;
+    };
+    // Mouse / lápiz: se arrastra al mover más de 6 px.
+    grid.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch' || e.button !== 0) return;
+      const cell = startable(e); if (!cell) return;
+      e.preventDefault();
+      press = { cell, x: e.clientX, y: e.clientY };
+    });
+    window.addEventListener('pointermove', e => {
+      if (e.pointerType === 'touch') return;
+      if (drag) { move(e.clientX, e.clientY); return; }
+      if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 6) { begin(press.cell, e.clientX, e.clientY); press = null; }
+    });
+    window.addEventListener('pointerup', e => { if (e.pointerType === 'touch') return; press = null; end(); });
+    // Táctil: mantener presionado ~0,25 s; si el dedo se mueve antes, es desplazamiento normal.
+    grid.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      const cell = startable(e); if (!cell) return;
+      const t = e.touches[0];
+      press = { cell, x: t.clientX, y: t.clientY, timer: setTimeout(() => { if (press) { begin(press.cell, press.x, press.y); press = null; } }, 250) };
+    }, { passive: true });
+    window.addEventListener('touchmove', e => {
+      const t = e.touches[0];
+      if (drag) { e.preventDefault(); move(t.clientX, t.clientY); return; }
+      if (press && Math.hypot(t.clientX - press.x, t.clientY - press.y) > 10) { clearTimeout(press.timer); press = null; }
+      else if (press) { press.x = t.clientX; press.y = t.clientY; }
+    }, { passive: false });
+    const touchEnd = () => { if (press) { clearTimeout(press.timer); press = null; } end(); };
+    window.addEventListener('touchend', touchEnd);
+    window.addEventListener('touchcancel', touchEnd);
+    grid.addEventListener('contextmenu', e => { if (e.target.closest('.mg-cell')) e.preventDefault(); });
+  }
+
   async function runMerge() {
-    if (merge.files.length < 2) return;
+    if (!merge.pages.length || merge.busy) return;
     $('mrgRun').disabled = true;
     try {
-      const { PDFDocument } = await ensurePdfLib();
-      const out = await PDFDocument.create();
-      for (let i = 0; i < merge.files.length; i++) {
-        setProg('mrg', 5 + (i / merge.files.length) * 85, 'Uniendo ' + (i + 1) + '/' + merge.files.length + '…');
-        const bytes = new Uint8Array(await readAB(merge.files[i].file));
-        const src = await abrirConPdfLib(bytes);
-        const pages = await out.copyPages(src, src.getPageIndices());
-        pages.forEach(p => out.addPage(p));
+      const { PDFDocument, degrees } = await ensurePdfLib();
+      const out = await PDFDocument.create(), docs = {};
+      const n = merge.pages.length;
+      for (let i = 0; i < n; i++) {
+        const pg = merge.pages[i];
+        setProg('mrg', 3 + (i / n) * 90, 'Uniendo hoja ' + (i + 1) + '/' + n + '…');
+        if (!docs[pg.sid]) docs[pg.sid] = await abrirConPdfLib(merge.sources[pg.sid].bytes);
+        const [cp] = await out.copyPages(docs[pg.sid], [pg.index]);
+        if (pg.rot) cp.setRotation(degrees(((cp.getRotation().angle || 0) + pg.rot) % 360));
+        out.addPage(cp);
       }
-      setProg('mrg', 95, 'Generando archivo…');
+      setProg('mrg', 96, 'Generando archivo…');
       const blob = new Blob([await out.save()], { type: 'application/pdf' });
-      download(blob, 'unido.pdf');
-      setProg('mrg', 100, '¡Listo! PDF descargado.');
+      const name = ($('mrgName').value.trim() || 'unido').replace(/[\\/:*?"<>|]+/g, '_').replace(/\.pdf$/i, '');
+      download(blob, name + '.pdf');
+      setProg('mrg', 100, '¡Listo! PDF de ' + n + (n === 1 ? ' hoja' : ' hojas') + ' descargado (' + kb(blob.size) + ').');
       toast('✅ PDF unido');
     } catch (e) {
       console.error(e); setProg('mrg', 0, 'Error: ' + e.message); toast('❌ ' + e.message);
-    } finally { $('mrgRun').disabled = false; }
+    } finally { $('mrgRun').disabled = !merge.pages.length; }
   }
 
   // ====================================================================
